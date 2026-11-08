@@ -56,7 +56,7 @@ from .brep import api as _brep_api  # noqa: F401
 from .brep import bridge as _brep_bridge
 from .brep import ocl_mesh as _brep_ocl_mesh
 
-API_VERSION = "0.2"
+API_VERSION = "0.3"
 
 # Properties applied first by set_operation_props, because others depend on them
 _PRIORITY_PROPS = (

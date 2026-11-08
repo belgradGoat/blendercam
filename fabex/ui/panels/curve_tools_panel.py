@@ -44,6 +44,10 @@ class VIEW3D_PT_tools_curvetools(Panel):
             icon="HOLDOUT_ON",
             text="Get Pocket Surfaces",
         )
+        col.operator(
+            "object.cam_brep_extract_edges",
+            icon="OUTLINER_OB_CURVE",
+        )
 
         column = col.column(align=True)
         column.operator(

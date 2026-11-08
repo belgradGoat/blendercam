@@ -5,7 +5,9 @@
 
 Bad icon names or layout calls only fail while Blender really draws, so this draws
 brep.ui.draw_ocl_mesh_settings into the 3D view header (a draw function that is always
-drawn) for each state of the settings, and checks it ran without errors.
+drawn) for each state of the settings, and checks it ran without errors. The same header
+also draws the Curve Tools panel, the Fabex menu and the "B-rep Edges to Curves" dialog
+(both kinds of layout), which list the B-rep operator.
 Prints PASS/FAIL lines and a SUMMARY; the exit code is 0 when everything passed.
 """
 
@@ -74,12 +76,32 @@ try:
     o = bpy.context.scene.cam_operations[0]
     check("operation has B-rep sources", brep_ui.operation_brep_objects(o) == [ob])
 
+    from types import SimpleNamespace
+
+    curve_panel = importlib.import_module(FABEX + ".ui.panels.curve_tools_panel")
+    menus = importlib.import_module(FABEX + ".ui.menus.viewport")
+    brep_ops = importlib.import_module(FABEX + ".brep.operators")
+    bpy.context.view_layer.objects.active = ob
+
     def header_draw(self, context):
         try:
             brep_ui.draw_ocl_mesh_settings(self.layout, o)
             state["drawn"].add(state["variant"])
         except Exception as e:  # recorded, checked below
             state["errors"].append((state["variant"], repr(e)))
+        try:
+            box = self.layout.row()
+            curve_panel.VIEW3D_PT_tools_curvetools.draw(SimpleNamespace(layout=box), context)
+            menus.Fabex_SubMenu.draw(SimpleNamespace(layout=box), context)
+            for kind in ("CREASES", "HOLES"):
+                props = box.operator("object.cam_brep_extract_edges")
+                props.kind = kind
+                brep_ops.CamBrepExtractEdges.draw(
+                    SimpleNamespace(layout=box.column(), properties=props), context
+                )
+            state["drawn"].add("edges")
+        except Exception as e:
+            state["errors"].append(("edges", repr(e)))
 
     bpy.types.VIEW3D_HT_header.append(header_draw)
 except Exception as e:
@@ -109,6 +131,11 @@ def poll():
     try:
         if step["i"] >= len(VARIANTS):
             bridge.find_kernel = real_find_kernel
+            check("edges-to-curves menu, panel entry and dialog drew", "edges" in state["drawn"])
+            check(
+                "operator is available for the B-rep object",
+                bpy.ops.object.cam_brep_extract_edges.poll(),
+            )
             check("no draw errors", not state["errors"], state["errors"])
             finish()
         name = VARIANTS[step["i"]]

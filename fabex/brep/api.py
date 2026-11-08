@@ -8,7 +8,8 @@ import bpy
 
 from ..exception import BrepError, FabexAPIError
 from ..utilities.api_utils import api_function
-from . import bridge, ocl_mesh
+from . import bridge, curves, ocl_mesh
+from .brepcam import edges as brep_edges
 
 
 @api_function("brep")
@@ -77,4 +78,83 @@ def cam_tessellation(obj: str, tolerance: float | None = None, op=None) -> dict:
         "body_hash": bridge.body_hash(ob),
         "cached": cached,
         **mesh.stats(),
+    }
+
+
+@api_function("brep", mutates=True)
+def extract_edges(
+    obj: str,
+    kind: str = "creases",
+    faces: list | None = None,
+    tolerance: float = 0.00001,
+    project: str = "none",
+    separate: bool = False,
+    name: str | None = None,
+    crease_angle: float = 30.0,
+    replace: bool = True,
+) -> dict:
+    """Make curve objects from a B-rep object's exact edges, face loops or holes - sources
+    for Profile, Pocket and Drill operations (POLY splines in world space).
+
+    kind: "creases" (sharp edges, no tangent seams/fillet edges), "all", "naked" (open
+      sheet boundaries), "shared", "outer_loops" (each face's boundary) or "holes" (inner
+      face loops: drilled holes, pockets, slots; a through hole once, from its top end).
+    faces: B-rep face ids (see brep_holes / the mesh's 'brep_face_id' attribute) - only
+      edges touching them, or only their loops / holes.
+    tolerance: max distance from the exact curves, in metres (default 0.01 mm).
+    project: "none" keeps 3D curves; "top" / "bottom" flattens each curve to its highest /
+      lowest Z (holes: the hole's top / bottom, so a DRILL operation with
+      min_z_from="OBJECT" drills every hole to its own depth); a number flattens all
+      curves to that Z (e.g. object_bbox_min[2], to profile down to the part's bottom with
+      min_z_from="OBJECT"). Curves that collapse (vertical edges, walls) are dropped and
+      coinciding ones kept once.
+    separate: one object per curve (<name>_1, <name>_2, ...). name: default "<obj>_<kind>".
+    replace: re-extracting under the same name replaces the curves made earlier, so
+      operations keep pointing at them; objects not made here are never changed.
+    Returns the created object names, counts, per-spline info, (kind "holes") the holes,
+    and the B-rep object's world bounding box."""
+    ob = curves.brep_source_object(obj)
+    objects, es = curves.extract_curves(
+        ob, kind, tolerance, faces, project, crease_angle, separate, name, replace
+    )
+    return {
+        "object": ob.name,
+        "body_hash": bridge.body_hash(ob),
+        **curves.object_bbox(ob),
+        "objects": [o.name for o in objects],
+        **es.stats(),
+        "spline_info": [p.summary() for p in es.polylines],
+        "holes": es.holes,
+    }
+
+
+@api_function("brep")
+def brep_holes(obj: str, faces: list | None = None, tolerance: float = 0.00001) -> dict:
+    """Holes and other openings in a B-rep object, in world space - nothing is created.
+
+    Each hole: kind ("through" | "blind" | "open"), circular, center (on the entry face),
+    radius / diameter (circular holes), axis, vertical, depth, z_top, z_bottom, size_xy,
+    the entry face / loop, wall faces and the other ends of through holes. Loops whose walls
+    stand out of the face are listed under "bosses" instead. faces: only these faces' loops.
+    Assumes outward normals (BRepKit solids are built that way)."""
+    ob = curves.brep_source_object(obj)
+    body = bridge.read_body(ob)
+    if faces is not None:
+        unknown = sorted({int(f) for f in faces} - set(body.faces))
+        if unknown:
+            raise FabexAPIError(
+                "INVALID_VALUE", f"No faces {unknown}", {"faces": sorted(body.faces)}
+            )
+        faces = {int(f) for f in faces}
+    if not tolerance or tolerance <= 0:
+        raise FabexAPIError("INVALID_VALUE", "tolerance must be positive", {})
+    found, warnings = brep_edges.find_holes(body, float(tolerance), bridge.world_matrix(ob), faces)
+    found = [brep_edges.public_hole(h) for h in found]
+    return {
+        "object": ob.name,
+        "body_hash": bridge.body_hash(ob),
+        **curves.object_bbox(ob),
+        "holes": [h for h in found if h["kind"] != "boss"],
+        "bosses": [h for h in found if h["kind"] == "boss"],
+        "warnings": warnings,
     }

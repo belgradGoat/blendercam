@@ -32,6 +32,7 @@ from .simple_utils import (
 )
 
 from ..brep.bridge import body_hash
+from ..exception import CamException
 from .. import __package__ as base_package
 from ..constants import was_hidden_dict
 
