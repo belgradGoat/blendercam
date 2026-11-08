@@ -26,6 +26,7 @@ except ImportError:
     pass
 
 
+from .addon_utils import add_collections
 from .async_utils import progress_async
 from ..chunk_builder import (
     CamPathChunk,
@@ -1308,13 +1309,15 @@ def chunks_to_mesh(chunks, o):
     o.path_object_name = path_name
 
     collections = bpy.data.collections
-    if "Paths" in collections:
-        bpy.context.collection.objects.unlink(ob)
-        collections["Paths"].objects.link(ob)
-    else:
+    if "Paths" not in collections:
+        # may already move the new path object into "Paths" (it carries the path prefix)
         add_collections()
-        bpy.context.collection.objects.unlink(ob)
-        collections["Paths"].objects.link(ob)
+    paths_collection = collections["Paths"]
+    if ob.name not in paths_collection.objects:
+        paths_collection.objects.link(ob)
+    for collection in list(ob.users_collection):
+        if collection != paths_collection:
+            collection.objects.unlink(ob)
 
     # parent the path object to source object if object mode
     if (o.geometry_source == "OBJECT") and o.parent_path_to_object:

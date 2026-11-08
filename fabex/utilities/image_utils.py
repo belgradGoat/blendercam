@@ -523,7 +523,7 @@ def render_sample_image(o):
                     node_tree = scene.compositing_node_group
                 else:
                     scene.use_nodes = True
-                    scene.node_tree
+                    node_tree = scene.node_tree
 
                 node_tree.links.clear()
                 node_tree.nodes.clear()
@@ -537,9 +537,13 @@ def render_sample_image(o):
                     file_output.directory = os.path.dirname(image_name)
                     file_output.file_name = os.path.basename(image_name)
                     file_output.format.media_type = "IMAGE"
+                    output_socket = file_output.inputs[0]
                 else:
                     file_output.base_path = os.path.dirname(image_name)
                     file_output.file_slots.new(os.path.basename(image_name))
+                    # The node starts with a default "Image" slot; the depth goes into the
+                    # new slot (the last input), which is the one named after image_name.
+                    output_socket = file_output.inputs[-1]
 
                 file_output.format.file_format = "OPEN_EXR"
                 file_output.format.color_mode = "RGB"
@@ -552,7 +556,7 @@ def render_sample_image(o):
 
                 node_tree.links.new(
                     reroute.outputs[0],
-                    file_output.inputs[0],
+                    output_socket,
                 )
 
                 mist_settings = scene.world.mist_settings
@@ -605,7 +609,11 @@ def render_sample_image(o):
                 camera.select_set(True)
                 bpy.ops.object.delete()
 
-                # os.replace(image_name + "%04d.exr" % (scene.frame_current), image_name)
+                # Blender 4.x's File Output node appends the frame number to the slot path
+                if blender_version < 5:
+                    written = image_name + "%04d.exr" % scene.frame_current
+                    if os.path.exists(written):
+                        os.replace(written, image_name)
 
             finally:
                 if backup_settings is not None:

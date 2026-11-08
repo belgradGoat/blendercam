@@ -376,13 +376,29 @@ def get_cache_path(o):
         str: The constructed cache path as a string.
     """
     fn = bpy.data.filepath
-    l = len(bpy.path.basename(fn))
     bn = bpy.path.basename(fn)[:-6]
-    log.info(f"Folder: {fn[:-l]}")
+    log.info(f"Folder: {_temp_cam_dir()}")
     log.info(f"File: {bn}")
 
-    iname = f"{fn[:-l]}temp_cam{os.sep}{bn}_{o.name}"
+    iname = f"{_temp_cam_dir()}{bn}_{o.name}"
     return iname
+
+
+def _temp_cam_dir():
+    """'temp_cam' folder next to the .blend, with a trailing separator.
+
+    For an unsaved file a relative 'temp_cam/' would land in Blender's working
+    directory (often '/', which isn't writable), so the system temp folder is used.
+    """
+    fn = bpy.data.filepath
+    if not fn:
+        import tempfile
+
+        folder = os.path.join(tempfile.gettempdir(), "fabex_temp_cam")
+        os.makedirs(folder, exist_ok=True)
+        return folder + os.sep
+    l = len(bpy.path.basename(fn))
+    return f"{fn[:-l]}temp_cam{os.sep}"
 
 
 def get_simulation_path():
@@ -396,10 +412,7 @@ def get_simulation_path():
     Returns:
         str: The path to the temporary CAM directory.
     """
-    fn = bpy.data.filepath
-    l = len(bpy.path.basename(fn))
-    iname = f"{fn[:-l]}temp_cam{os.sep}"
-    return iname
+    return _temp_cam_dir()
 
 
 def safe_filename(name):  # for export gcode

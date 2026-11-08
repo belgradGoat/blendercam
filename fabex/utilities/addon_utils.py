@@ -40,17 +40,21 @@ def addon_dependencies():
         "export_autocad_dxf_format_dxf",
     ]
 
+    missing = [module for module in modules if f"bl_ext.blender_org.{module}" not in addons]
+
+    # Everything is already installed - no need to go online
+    if not missing:
+        return
+
     if online_access:
-        for module in modules:
-            if module not in addons:
-                try:
-                    addons[f"bl_ext.blender_org.{module}"]
-                except KeyError:
-                    bpy.ops.extensions.package_install(repo_index=0, pkg_id=module)
+        for module in missing:
+            bpy.ops.extensions.package_install(repo_index=0, pkg_id=module)
     else:
-        log.debug("Could not Access Online Addon Repository!")
-        raise CamException(
-            "Fabex couldn't install required addons - 'Enable Online Access' in 'Preferences > System'"
+        # Warn instead of raising, so the rest of the startup setup
+        # (workspace, asset library, engine-change hook) still runs
+        log.warning(
+            f"Fabex couldn't install required addons {missing} - "
+            "'Enable Online Access' in 'Preferences > System' to install them"
         )
 
 
@@ -353,7 +357,8 @@ def add_collections():
     simulation_prefix = cam_names.simulation_prefix
 
     scene_collection = context.scene.collection
-    default_collection = collections["Collection"]
+    # the startup file's default collection; may have been renamed or deleted
+    default_collection = collections.get("Collection")
     fabex_collections = [
         ("Bridges (Tabs)", "COLOR_06"),
         ("Paths", "COLOR_04"),
@@ -370,6 +375,9 @@ def add_collections():
     paths_collection = collections["Paths"]
     simulations_collection = collections["Simulations"]
 
+    if default_collection is None:
+        return
+
     children = default_collection.children
     for child in children:
         prefix = child.name.startswith
@@ -381,14 +389,10 @@ def add_collections():
     for obj in objects:
         prefix = obj.name.startswith
         if prefix(path_prefix):
-            try:
-                paths_collection.objects[obj.name]
-            except RuntimeError:
+            if obj.name not in paths_collection.objects:
                 paths_collection.objects.link(obj)
         if prefix(simulation_prefix):
-            try:
-                simulations_collection.objects[obj.name]
-            except RuntimeError:
+            if obj.name not in simulations_collection.objects:
                 simulations_collection.objects.link(obj)
         if prefix in ["bridge", path_prefix, simulation_prefix]:
             default_collection.objects.unlink(obj)
