@@ -155,6 +155,14 @@ class KillPathsBackground(Operator):
         return {"FINISHED"}
 
 
+def _report(operator, level, message):
+    """Report to the operator if there is one (UI), otherwise only log (scripting API)."""
+    if operator is not None:
+        operator.report(level, message)
+    else:
+        log.error(message)
+
+
 async def _calc_path(operator, context):
     """Calculate the path for a given operator and context.
 
@@ -168,14 +176,16 @@ async def _calc_path(operator, context):
     operator.
 
     Args:
-        operator (bpy.types.Operator): The operator that initiated the path calculation.
+        operator (bpy.types.Operator | None): The operator that initiated the path
+            calculation, or None when called from the scripting API (errors are then
+            only logged, and returned in the message).
         context (bpy.types.Context): The context in which the operation is executed.
 
     Returns:
-        tuple: A tuple indicating the status of the operation.
-            Returns {'FINISHED', True} if successful,
-            {'FINISHED', False} if there was an error,
-            or {'CANCELLED', False} if the operation was cancelled.
+        tuple: (status, success, message)
+            ("FINISHED", True, "") if successful,
+            ("FINISHED", False, <error>) if there was an error,
+            ("CANCELLED", False, <reason>) if the operation was cancelled.
     """
 
     s = bpy.context.scene
@@ -201,24 +211,19 @@ async def _calc_path(operator, context):
 
     text = "Operation can't be performed, see Warnings for info"
     if not o.valid:
-        operator.report(
-            {"ERROR_INVALID_INPUT"},
-            text,
-        )
+        _report(operator, {"ERROR_INVALID_INPUT"}, text)
         progress_async(text)
-        return {"FINISHED", False}
+        return ("FINISHED", False, f"{text}: {o.info.warnings.strip()}")
 
     # check for free movement height < maxz and return with error
     if o.movement.free_height < o.max_z:
-        operator.report(
-            {"ERROR_INVALID_INPUT"},
-            "Free Movement Height Is Less than Operation Depth Start \n Correct and Try Again.",
-        )
+        text = "Free Movement Height Is Less than Operation Depth Start \n Correct and Try Again."
+        _report(operator, {"ERROR_INVALID_INPUT"}, text)
         progress_async("Operation Can't Be Performed, See Warnings for Info")
-        return {"FINISHED", False}
+        return ("FINISHED", False, text)
 
     if o.computing:
-        return {"FINISHED", False}
+        return ("FINISHED", False, "Operation is already being computed")
 
     o.operator = operator
 
@@ -231,21 +236,21 @@ async def _calc_path(operator, context):
         log.error(e)
         traceback.print_tb(e.__traceback__)
         error_str = "\n".join(textwrap.wrap(str(e), width=80))
-        operator.report({"ERROR"}, error_str)
-        return {"FINISHED", False}
+        _report(operator, {"ERROR"}, error_str)
+        return ("FINISHED", False, str(e))
     except AsyncCancelledException as e:
         log.warning(e)
-        return {"CANCELLED", False}
+        return ("CANCELLED", False, str(e))
     except Exception as e:
         log.error(f"FAIL {e}")
         traceback.print_tb(e.__traceback__)
-        operator.report({"ERROR"}, str(e))
-        return {"FINISHED", False}
+        _report(operator, {"ERROR"}, str(e))
+        return ("FINISHED", False, f"{type(e).__name__}: {e}")
     coll = bpy.data.collections.get("RigidBodyWorld")
     if coll:
         bpy.data.collections.remove(coll)
 
-    return {"FINISHED", True}
+    return ("FINISHED", True, "")
 
 
 class CalculatePath(Operator, AsyncOperatorMixin):
@@ -298,7 +303,7 @@ class CalculatePath(Operator, AsyncOperatorMixin):
             Any: The result of the path calculation.
         """
 
-        (retval, success) = await _calc_path(self, context)
+        retval, success, message = await _calc_path(self, context)
         log.info(f"CALCULATED PATH (success={success},retval={retval})")
 
         # Import the Gcode file to Blender's Text Editor for inspection
@@ -323,7 +328,7 @@ class CalculatePath(Operator, AsyncOperatorMixin):
             "SHOPBOT MTC": ("shopbot_mtc", ".sbp"),
             "SIEGKX1": ("siegkx1", ".tap"),
             "TNC151": ("tnc151", ".tap"),
-            "USER": {"user", ".gcode"},
+            "USER": ("user", ".gcode"),
             "WIN-PC": ("winpc", ".din"),
         }
 
@@ -349,7 +354,7 @@ class CalculatePath(Operator, AsyncOperatorMixin):
         except IndexError:
             pass
 
-        return retval
+        return {retval}
 
 
 class PathsAll(Operator):
@@ -470,8 +475,8 @@ class PathsChain(Operator, AsyncOperatorMixin):
             for i in range(0, len(chainops)):
                 s.cam_active_operation = s.cam_operations.find(chainops[i].name)
                 self.report({"INFO"}, f"Calculating Path: {chainops[i].name}")
-                result, success = await _calc_path(self, context)
-                if not success and "FINISHED" in result:
+                result, success, message = await _calc_path(self, context)
+                if not success and result == "FINISHED":
                     self.report({"ERROR"}, f"Couldn't Calculate Path: {chainops[i].name}")
         except Exception as e:
             log.error(f"FAIL {e}")
