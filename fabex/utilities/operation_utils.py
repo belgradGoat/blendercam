@@ -31,6 +31,7 @@ from .simple_utils import (
     unit_value_to_string,
 )
 
+from ..brep.bridge import body_hash
 from .. import __package__ as base_package
 from ..constants import was_hidden_dict
 
@@ -557,6 +558,9 @@ def get_change_data(o):
         changedata += str(ob.location)
         changedata += str(ob.rotation_euler)
         changedata += str(ob.dimensions)
+        # B-rep objects: editing the surfaces must invalidate the cached images even
+        # when the bounding box stays the same
+        changedata += body_hash(ob)
 
     return changedata
 

@@ -34,6 +34,7 @@ ERROR_CODES = {
     "BREPKIT_UNAVAILABLE": "BRepKit was not found (enable the extension or set FABEX_BREPKIT_PATH)",
     "NOT_A_BREP": "The object carries no BRepKit B-rep data",
     "BREP_PARSE_FAILED": "The B-rep data could not be read by the available BRepKit",
+    "TESSELLATION_FAILED": "BRepKit could not tessellate the B-rep",
     "CAM_ERROR": "A Fabex error without a specific code",
     "INTERNAL_ERROR": "Unexpected error - details has the exception",
 }

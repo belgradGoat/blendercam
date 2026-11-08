@@ -16,6 +16,7 @@ from bpy.props import (
 # CAM_OPERATION_Properties, which is imported and registered
 # in the main ('cam') __init__ file, to allow these and other dependencies
 # to register first
+from .brep_props import CAM_BREP_Properties
 from .chain_props import CAM_CHAIN_Properties, CAM_OP_REFERENCE_Properties
 from .info_props import CAM_INFO_Properties
 from .interface_props import CAM_INTERFACE_Properties, draw_interface
@@ -64,6 +65,7 @@ from ..utilities.operation_utils import update_operation
 
 
 classes = [
+    CAM_BREP_Properties,
     CAM_OP_REFERENCE_Properties,
     CAM_CHAIN_Properties,
     CAM_INFO_Properties,

@@ -8,6 +8,7 @@ import time
 
 import bpy
 
+from .brep.ocl_mesh import begin_report as begin_brep_report
 from .constants import USE_PROFILER
 from .exception import CamException
 from .gcode.gcode_export import export_gcode_path
@@ -102,6 +103,7 @@ async def get_path(context, operation):
     )
     get_operation_sources(operation)
     operation.info.warnings = ""
+    begin_brep_report(operation)
     check_memory_limit(operation)
 
     log.info(f"Operation Axes: {operation.machine_axes}")

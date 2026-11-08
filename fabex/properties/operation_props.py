@@ -36,6 +36,7 @@ from ..utilities.operation_utils import (
     update_Z_buffer_image,
     update_image_size_y,
 )
+from .brep_props import CAM_BREP_Properties
 from .info_props import CAM_INFO_Properties
 from .material_props import CAM_MATERIAL_Properties
 from .movement_props import CAM_MOVEMENT_Properties
@@ -51,6 +52,7 @@ class CAM_OPERATION_Properties(PropertyGroup):
     info: PointerProperty(type=CAM_INFO_Properties)
     optimisation: PointerProperty(type=CAM_OPTIMISATION_Properties)
     movement: PointerProperty(type=CAM_MOVEMENT_Properties)
+    brep: PointerProperty(type=CAM_BREP_Properties)
 
     ########################
     # Property Definitions #

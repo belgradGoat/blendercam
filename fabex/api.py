@@ -54,8 +54,9 @@ from .version import __version__ as _fabex_version
 # B-rep functions register themselves on import
 from .brep import api as _brep_api  # noqa: F401
 from .brep import bridge as _brep_bridge
+from .brep import ocl_mesh as _brep_ocl_mesh
 
-API_VERSION = "0.1"
+API_VERSION = "0.2"
 
 # Properties applied first by set_operation_props, because others depend on them
 _PRIORITY_PROPS = (
@@ -131,6 +132,8 @@ def _props_dict(struct, prefix: str = "") -> dict:
     for prop in struct.bl_rna.properties:
         pid = prop.identifier
         if pid == "rna_type" or prop.is_hidden:
+            continue
+        if prefix and pid == "name":  # every nested PropertyGroup has an unused 'name'
             continue
         key = prefix + pid
         if prop.type == "COLLECTION":
@@ -281,7 +284,9 @@ def _path_stats(o) -> dict | None:
         "length": length,
         "bbox_min": co.min(axis=0) if n else None,
         "bbox_max": co.max(axis=0) if n else None,
-        "estimated_duration": o.info.duration,
+        # Fabex only estimates machining time while writing G-code, so this is set
+        # by compute_operation (with export) and export_gcode, else None
+        "estimated_minutes": None,
     }
 
 
@@ -330,9 +335,13 @@ def _compute_result(index, o, status, started_wall, started, export, extra_warni
         "path": _path_stats(o) if ok else None,
         "warnings": extra_warnings + _warnings(o),
         "gcode_files": [],
+        # for B-rep sources sampled by OpenCAMLib: exact or display mesh, deviation
+        "brep_meshes": _brep_ocl_mesh.report(o),
     }
     if ok and export.enabled:
         result["gcode_files"] = _find_exports(export.directory, _export_name(o), started_wall)
+        if result["gcode_files"] and result["path"]:
+            result["path"]["estimated_minutes"] = o.info.duration
     return result
 
 
@@ -587,6 +596,7 @@ def remove_operation(op, delete_path: bool = True) -> dict:
 def _start(index, o, export):
     """Common setup for compute_operation / start_compute."""
     _activate(index)
+    _brep_ocl_mesh.begin_report(o)
     if not source_valid(o, bpy.context):
         raise FabexAPIError(
             "SOURCE_INVALID",
@@ -747,8 +757,9 @@ def cancel_job(job_id: str) -> dict:
 
 @api_function("compute")
 def path_info(op) -> dict:
-    """Stats of an operation's existing toolpath: point count, length, bounding box,
-    estimated duration. Raises PATH_NOT_FOUND if it hasn't been calculated."""
+    """Stats of an operation's existing toolpath: point count, length, bounding box.
+    (Machining time is only estimated while writing G-code: see compute_operation /
+    export_gcode.) Raises PATH_NOT_FOUND if it hasn't been calculated."""
     index, o = _resolve(op)
     stats = _path_stats(o)
     if stats is None:
@@ -771,9 +782,11 @@ def export_gcode(op, directory: str | None = None) -> dict:
         export_gcode_path(_export_name(o), [ob.data], [o])
     finally:
         settings.restore()
+    files = _find_exports(settings.directory, _export_name(o), started)
     return {
         "op": o.name,
-        "files": _find_exports(settings.directory, _export_name(o), started),
+        "files": files,
+        "estimated_minutes": o.info.duration if files else None,
         "warnings": settings.warnings,
     }
 

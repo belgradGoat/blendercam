@@ -37,6 +37,7 @@ except ImportError:
 import mathutils
 
 
+from ..brep.ocl_mesh import exact_triangles
 from ..constants import OCL_SCALE, _PREVIOUS_OCL_MESH
 
 from ..exception import CamException
@@ -298,6 +299,17 @@ async def oclSample(operation, chunks):
     chunkPointSamplesFromOCL(chunks, samples)
 
 
+def add_triangles(oclSTL, triangles, skin):
+    """Add world-space triangles (n, 3, 3) to an ocl.STLSurf, raised by `skin` in Z
+    (the same convention as the mesh route below)."""
+    pts = np.asarray(triangles, dtype=float).reshape(-1, 3) * OCL_SCALE
+    pts[:, 2] += skin * OCL_SCALE
+    pts = pts.reshape(-1, 3, 3).tolist()
+    Point, Triangle = ocl.Point, ocl.Triangle
+    for a, b, c in pts:
+        oclSTL.addTriangle(Triangle(Point(*a), Point(*b), Point(*c)))
+
+
 def get_oclSTL(operation):
     """Get the oclSTL representation from the provided operation.
 
@@ -349,6 +361,12 @@ def get_oclSTL(operation):
         ):
 
             found_mesh = True
+
+            # B-rep objects: triangles from the exact surfaces, within o.brep.mesh_tolerance
+            exact = exact_triangles(operation, collision_object)
+            if exact is not None:
+                add_triangles(oclSTL, exact, operation.skin)
+                continue
 
             global_matrix = mathutils.Matrix.Identity(4)
 

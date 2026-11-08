@@ -144,6 +144,17 @@ check(
 )
 check("path has many points", p and p["points"] > 100, p.get("points"))
 check(
+    "machining time estimated when G-code is written",
+    p and p["estimated_minutes"] and p["estimated_minutes"] > 0,
+    p.get("estimated_minutes"),
+)
+r_noexport = fx.compute_operation("DomeFinish", export=False)
+check(
+    "no machining-time guess without G-code",
+    r_noexport["ok"] and r_noexport["path"]["estimated_minutes"] is None,
+    r_noexport["path"],
+)
+check(
     "path never below the part's lowest point",
     p and p["bbox_min"][2] >= -0.012 - 1e-6,
     p.get("bbox_min"),

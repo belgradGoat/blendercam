@@ -9,6 +9,7 @@ from bpy.types import Panel
 
 from .parent_panel import CAMParentPanel
 
+from ...brep.ui import draw_ocl_mesh_settings
 from ...utilities.version_utils import opencamlib_version
 
 
@@ -85,6 +86,9 @@ class CAM_OPTIMISATION_Panel(CAMParentPanel, Panel):
                     else:
                         # col = layout.column(align=True)
                         col.prop(self.op.optimisation, "use_opencamlib")
+
+                    # B-rep (BRepKit) sources: exact-tolerance mesh for OpenCAMLib
+                    draw_ocl_mesh_settings(col, self.op)
 
                     # Simplify Gcode
                     if self.op.strategy not in ["DRILL"]:
