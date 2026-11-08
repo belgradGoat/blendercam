@@ -8,8 +8,9 @@ import bpy
 
 from ..exception import BrepError, FabexAPIError
 from ..utilities.api_utils import api_function
-from . import bridge, curves, ocl_mesh
+from . import bridge, curves, fit, ocl_mesh
 from .brepcam import edges as brep_edges
+from .brepcam import fitcheck as brep_fitcheck
 
 
 @api_function("brep")
@@ -158,3 +159,80 @@ def brep_holes(obj: str, faces: list | None = None, tolerance: float = 0.00001) 
         "bosses": [h for h in found if h["kind"] == "boss"],
         "warnings": warnings,
     }
+
+
+@api_function("brep")
+def fit_check(
+    obj: str,
+    op=None,
+    cutter_type: str | None = None,
+    diameter: float | None = None,
+    corner_radius: float | None = None,
+    skin: float | None = None,
+    faces: list | None = None,
+    wall_angle: float = 80.0,
+    corner_angle: float = 10.0,
+    all_faces: bool = False,
+) -> dict:
+    """Will a cutter reach everything on a B-rep object? From the exact surfaces, in world
+    space (metres), for a tool coming from above (+Z). Nothing is changed.
+
+    Always reports:
+      min_concave_radius - the tightest curve towards the tool (fillets, holes, dishes):
+        a ball (or a bull nose's corner, a ball cone's tip) must be no larger. radius
+        None = no concave curvature (no limit). With the point, face id and face name.
+      min_wall_radius - the tightest inside radius of the contour lines of walls steeper
+        than wall_angle degrees (pocket corners, holes): limits flat-bottomed cutters.
+      sharp_corners - concave edges whose faces meet at >= corner_angle degrees (no fillet;
+        no round cutter reaches into them): kind "vertical" (inside corner in plan),
+        "floor" (wall meets a level floor: a flat end mill reaches it) or "other".
+      faces - per-face radii, concave and undercut area fractions (only faces with a
+        limit unless all_faces=True).
+    With a cutter - from `op` (name or index; its cutter type, diameter, corner / ball
+    radius and skin), and/or cutter_type ("END" | "BALLNOSE" | "BULLNOSE" | "BALLCONE";
+    other types are not checked), diameter, corner_radius, skin overriding it:
+      fits (True / False / None = not checked), problems (each: check "concave_radius" or
+      "wall_radius", face, radius found, radius needed, point, area fraction too tight),
+      the material left in each sharp corner ("rest") and corner_rest_max, and the largest
+      tip radius (max_tip_radius) / cutter radius (max_cutter_radius) that would fit, after
+      the skin. messages: the warning lines Fabex shows.
+    The analysis is cached per object; checking more cutters is instant."""
+    ob = curves.brep_source_object(obj)
+    o = None
+    if op is not None:
+        from ..api import _resolve  # late import: fabex.api imports this module
+
+        o = _resolve(op)[1]
+    cutter = fit.cutter_of(o) if o is not None else None
+    if cutter_type is not None or diameter is not None or corner_radius is not None:
+        kind = (cutter_type or (cutter.type if cutter else "")).upper()
+        dia = diameter if diameter is not None else (cutter.diameter if cutter else None)
+        if not kind or dia is None:
+            raise FabexAPIError(
+                "INVALID_VALUE",
+                "Give cutter_type and diameter (or an op to take the cutter from)",
+                {"cutter_types": list(brep_fitcheck.CHECKED)},
+            )
+        if not dia > 0:
+            raise FabexAPIError("INVALID_VALUE", "diameter must be positive", {"diameter": dia})
+        corner = corner_radius
+        if corner is None and cutter is not None and cutter.type == kind:
+            corner = cutter.corner_radius
+        if kind in ("BULLNOSE", "BALLCONE") and corner is None:
+            raise FabexAPIError(
+                "INVALID_VALUE", f"{kind} needs corner_radius", {"cutter_type": kind}
+            )
+        cutter = brep_fitcheck.Cutter(kind, float(dia), None if corner is None else float(corner))
+    if skin is None:
+        skin = fit.setting(o.skin) if o is not None else 0.0
+    if skin < 0:
+        raise FabexAPIError("INVALID_VALUE", "skin can't be negative", {"skin": skin})
+    return fit.object_report(
+        ob,
+        cutter,
+        float(skin),
+        faces,
+        float(wall_angle),
+        float(corner_angle),
+        bool(all_faces),
+    )

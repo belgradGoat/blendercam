@@ -47,3 +47,10 @@ class CAM_BREP_Properties(PropertyGroup):
         unit="LENGTH",
         update=update_brep,
     )
+
+    check_fit: BoolProperty(
+        name="Check Cutter Fit",
+        description="When computing a surface operation on BRepKit B-rep objects, check that "
+        "the cutter fits the tightest concave curves and wall corners, and warn if not",
+        default=True,
+    )

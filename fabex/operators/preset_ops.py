@@ -59,6 +59,7 @@ class AddPresetCamOperation(AddPresetBase, Operator):
         "o.material.origin",
         "o.brep.use_exact_mesh",
         "o.brep.mesh_tolerance",
+        "o.brep.check_fit",
         "o.movement.stay_low",
         "o.movement.free_height",
         "o.movement.insideout",

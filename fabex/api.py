@@ -55,8 +55,9 @@ from .version import __version__ as _fabex_version
 from .brep import api as _brep_api  # noqa: F401
 from .brep import bridge as _brep_bridge
 from .brep import ocl_mesh as _brep_ocl_mesh
+from .brep import fit as _brep_fit
 
-API_VERSION = "0.3"
+API_VERSION = "0.4"
 
 # Properties applied first by set_operation_props, because others depend on them
 _PRIORITY_PROPS = (
@@ -337,6 +338,8 @@ def _compute_result(index, o, status, started_wall, started, export, extra_warni
         "gcode_files": [],
         # for B-rep sources sampled by OpenCAMLib: exact or display mesh, deviation
         "brep_meshes": _brep_ocl_mesh.report(o),
+        # B-rep sources of surface operations: does the cutter fit (see fit_check)
+        "brep_fit": _brep_fit.report(o, compact=True),
     }
     if ok and export.enabled:
         result["gcode_files"] = _find_exports(export.directory, _export_name(o), started_wall)
@@ -597,6 +600,7 @@ def _start(index, o, export):
     """Common setup for compute_operation / start_compute."""
     _activate(index)
     _brep_ocl_mesh.begin_report(o)
+    _brep_fit.begin_report(o)
     if not source_valid(o, bpy.context):
         raise FabexAPIError(
             "SOURCE_INVALID",

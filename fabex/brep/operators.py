@@ -12,9 +12,8 @@ from bpy.props import BoolProperty, EnumProperty, FloatProperty
 from bpy.types import Operator
 
 from ..exception import CamException
-from . import bridge, curves
-
-FACE_ID_ATTR = "brep_face_id"  # BRepKit's per-polygon face id on the display mesh
+from . import bridge, curves, fit
+from .bridge import FACE_ID_ATTR
 
 
 def selected_brep_faces(ob) -> list | None:
@@ -150,4 +149,72 @@ class CamBrepExtractEdges(Operator):
             context.view_layer.objects.active = objects[0]
         names = ", ".join(o.name for o in objects[:3]) + ("..." if len(objects) > 3 else "")
         self.report({"INFO"}, f"{len(es.polylines)} curve(s) in {names}")
+        return {"FINISHED"}
+
+
+def active_operation(context):
+    """The scene's active CAM operation (None if there is none)."""
+    s = context.scene
+    ops = getattr(s, "cam_operations", None)
+    if not ops or not 0 <= s.cam_active_operation < len(ops):
+        return None
+    return ops[s.cam_active_operation]
+
+
+def _redraw(context) -> None:
+    for window in context.window_manager.windows if context.window_manager else ():
+        for area in window.screen.areas:
+            area.tag_redraw()
+
+
+class CamBrepFitCheck(Operator):
+    """Check that the active operation's cutter fits its B-rep objects: the tightest concave
+    curves, wall corners and sharp inside corners (or, without one, report the active
+    B-rep object's limits)"""
+
+    bl_idname = "object.cam_brep_fit_check"
+    bl_label = "Check Cutter Fit"
+    bl_options = {"REGISTER", "UNDO"}
+
+    select: BoolProperty(
+        name="Select Problem Faces",
+        description="In Edit Mode, select the faces the cutter doesn't fit",
+        default=True,
+    )
+
+    @classmethod
+    def poll(cls, context):
+        o = active_operation(context)
+        if o is not None and bridge.operation_brep_objects(o):
+            return True
+        return bridge.is_brep(context.active_object)
+
+    def execute(self, context):
+        o = active_operation(context)
+        objects = bridge.operation_brep_objects(o) if o is not None else []
+        if objects:
+            reports = fit.check_operation(o, warn=False)
+        else:
+            ob = context.active_object
+            try:
+                reports = [fit.object_report(ob)]
+            except CamException as e:
+                self.report({"ERROR"}, str(e))
+                return {"CANCELLED"}
+        problem_faces = {}
+        for rep in reports:
+            if rep.get("error"):
+                self.report({"WARNING"}, f"{rep['object']}: {rep['error']['message']}")
+                continue
+            for line in rep["messages"]:
+                self.report({"WARNING"}, line)
+            if rep["fits"] is True and not rep["messages"]:
+                self.report({"INFO"}, f"{rep['object']}: {fit.summary_text(rep)}")
+            elif rep["fits"] is None:
+                self.report({"INFO"}, f"{rep['object']}: {fit.summary_text(rep)}")
+            problem_faces[rep["object"]] = [p["face"] for p in rep.get("problems", [])]
+        ob = context.active_object
+        if self.select and ob is not None and ob.mode == "EDIT" and ob.name in problem_faces:
+            fit.select_faces(ob, problem_faces[ob.name])
+        _redraw(context)
         return {"FINISHED"}

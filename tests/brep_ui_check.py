@@ -7,7 +7,9 @@ Bad icon names or layout calls only fail while Blender really draws, so this dra
 brep.ui.draw_ocl_mesh_settings into the 3D view header (a draw function that is always
 drawn) for each state of the settings, and checks it ran without errors. The same header
 also draws the Curve Tools panel, the Fabex menu and the "B-rep Edges to Curves" dialog
-(both kinds of layout), which list the B-rep operator.
+(both kinds of layout), which list the B-rep operator, and the cutter fit readout
+(brep.ui.draw_fit_check) before a check, for a cutter that fits, a stale result, a cutter
+that doesn't fit (a dish with a too big ball) and without the kernel.
 Prints PASS/FAIL lines and a SUMMARY; the exit code is 0 when everything passed.
 """
 
@@ -76,6 +78,25 @@ try:
     o = bpy.context.scene.cam_operations[0]
     check("operation has B-rep sources", brep_ui.operation_brep_objects(o) == [ob])
 
+    fit = importlib.import_module(FABEX + ".brep.fit")
+    solids = kernel.module("ops.solids")
+    dish_body, _ = kernel.module("ops.boolean").boolean(
+        solids.box((0, 0, 0), (0.04, 0.04, 0.02)), solids.sphere((0, 0, 0.01), 0.008), "difference"
+    )
+    tess = kernel.module("tessellate.body").tessellate_body(dish_body)
+    mesh = bpy.data.meshes.new("Dish")
+    mesh.from_pydata(
+        [tuple(p) for p in tess.points], [], [list(map(int, p)) for p in tess.polygons()]
+    )
+    dish = bpy.data.objects.new("Dish", mesh)
+    bpy.context.scene.collection.objects.link(dish)
+    dish["brepkit_data"] = kernel.dumps_body(dish_body)
+    dish.location = (0.1, 0.0, -0.01)
+    fx.create_operation(
+        "Dish", "PARALLEL", name="Dish", props={"cutter_type": "BALLNOSE", "cutter_diameter": 0.02}
+    )
+    o2 = bpy.context.scene.cam_operations["Dish"]
+
     from types import SimpleNamespace
 
     curve_panel = importlib.import_module(FABEX + ".ui.panels.curve_tools_panel")
@@ -102,6 +123,13 @@ try:
             state["drawn"].add("edges")
         except Exception as e:
             state["errors"].append(("edges", repr(e)))
+        try:
+            col = self.layout.column()
+            brep_ui.draw_fit_check(col, o)
+            brep_ui.draw_fit_check(col, o2)
+            state["drawn"].add(f"fit {state['variant']}")
+        except Exception as e:
+            state["errors"].append((f"fit {state['variant']}", repr(e)))
 
     bpy.types.VIEW3D_HT_header.append(header_draw)
 except Exception as e:
@@ -115,7 +143,18 @@ def set_variant(name):
     bridge.find_kernel = real_find_kernel
     o.optimisation.use_opencamlib = True
     o.brep.use_exact_mesh = True
-    if name == "ocl off":
+    if name == "fit ok":
+        reps = fit.check_operation(o)
+        check("fit: 6 mm ball fits the ball", reps[0]["fits"] is True, reps[0]["messages"])
+    elif name == "fit stale":
+        o.cutter_diameter = 0.008
+    elif name == "fit misfit":
+        o.cutter_diameter = 0.006
+        reps = fit.check_operation(o2)
+        check(
+            "fit: 20 mm ball doesn't fit the R8 dish", reps[0]["fits"] is False, reps[0]["messages"]
+        )
+    elif name == "ocl off":
         o.optimisation.use_opencamlib = False
     elif name == "exact off":
         o.brep.use_exact_mesh = False
@@ -123,7 +162,7 @@ def set_variant(name):
         bridge.find_kernel = lambda refresh=False: None
 
 
-VARIANTS = ["exact", "ocl off", "exact off", "no kernel"]
+VARIANTS = ["exact", "fit ok", "fit stale", "fit misfit", "ocl off", "exact off", "no kernel"]
 step = {"i": 0, "wait": 0}
 
 
@@ -136,6 +175,12 @@ def poll():
                 "operator is available for the B-rep object",
                 bpy.ops.object.cam_brep_extract_edges.poll(),
             )
+            check(
+                "fit readout drew in every state",
+                all("fit " + v in state["drawn"] for v in VARIANTS),
+                sorted(map(str, state["drawn"])),
+            )
+            check("fit check operator is available", bpy.ops.object.cam_brep_fit_check.poll())
             check("no draw errors", not state["errors"], state["errors"])
             finish()
         name = VARIANTS[step["i"]]
@@ -148,7 +193,7 @@ def poll():
             step["wait"] = 0
             return 0.2
         step["wait"] += 1
-        if name in state["drawn"] or step["wait"] > 25:
+        if (name in state["drawn"] and "fit " + name in state["drawn"]) or step["wait"] > 25:
             check(f"panel helper drew: {name}", name in state["drawn"])
             step["i"] += 1
         return 0.1

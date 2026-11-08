@@ -30,6 +30,7 @@ from ..utilities.logging_utils import log
 from .brepcam.kernel import Kernel, KernelError, load_kernel_from_path
 
 DATA_PROP = "brepkit_data"
+FACE_ID_ATTR = "brep_face_id"  # BRepKit's per-polygon face id on the display mesh
 EXTENSION_ID = "brepkit"
 ENV_PATH = "FABEX_BREPKIT_PATH"
 
@@ -68,6 +69,17 @@ def world_matrix(obj) -> np.ndarray:
 def brep_objects(objects) -> list:
     """The B-rep objects among `objects` (e.g. an operation's `o.objects`)."""
     return [ob for ob in (objects or []) if is_brep(ob)]
+
+
+def operation_brep_objects(o) -> list:
+    """B-rep objects among an operation's geometry sources (without touching o.objects)."""
+    if o.geometry_source == "OBJECT":
+        ob = bpy.data.objects.get(o.object_name)
+        return brep_objects([ob] if ob else [])
+    if o.geometry_source == "COLLECTION":
+        col = bpy.data.collections.get(o.collection_name)
+        return brep_objects(col.objects if col else [])
+    return []
 
 
 # --- kernel lookup --------------------------------------------------------------------------

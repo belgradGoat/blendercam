@@ -14,6 +14,7 @@ class Fabex_SubMenu(Menu):
         layout.operator("object.cam_slice_objects", text="Slice Object")
         layout.operator("scene.calculate_bas_relief", text="Bas Relief")
         layout.operator("object.cam_brep_extract_edges", icon="OUTLINER_OB_CURVE")
+        layout.operator("object.cam_brep_fit_check", icon="VIEWZOOM")
 
 
 class Fabex_Menu(Menu):

@@ -9,6 +9,7 @@ import bpy
 from bpy.types import Panel
 
 from .parent_panel import CAMParentPanel
+from ...brep.ui import draw_fit_check
 from ..icons import preview_collections
 
 
@@ -154,6 +155,9 @@ class CAM_CUTTER_Panel(CAMParentPanel, Panel):
 
                     for text_line in text_lines:
                         col.label(text=text_line)
+
+        # B-rep sources: does the cutter fit the tightest curves and corners
+        draw_fit_check(layout, self.op)
 
         # Cutter Engagement
         if self.op.cutter_type in ["LASER", "PLASMA"]:
