@@ -56,7 +56,9 @@ def object_bbox(ob) -> dict:
     return {"object_bbox_min": P.min(0).tolist(), "object_bbox_max": P.max(0).tolist()}
 
 
-def edge_set(ob, kind="all", tolerance=0.00001, faces=None, project="none", crease_angle=30.0):
+def edge_set(
+    ob, kind="all", tolerance=0.00001, faces=None, project="none", crease_angle=30.0, holes=None
+):
     """brepcam EdgeSet for a B-rep object, in world space. Bad settings -> INVALID_VALUE."""
     body = bridge.read_body(ob)
     try:
@@ -68,6 +70,7 @@ def edge_set(ob, kind="all", tolerance=0.00001, faces=None, project="none", crea
             None if faces is None else list(faces),
             project,
             float(crease_angle),
+            None if holes is None else [int(i) for i in holes],
         )
     except (ValueError, KeyError) as e:
         raise FabexAPIError(
@@ -127,13 +130,14 @@ def extract_curves(
     separate: bool = False,
     name: str | None = None,
     replace: bool = True,
+    holes=None,
 ):
     """Make curve object(s) from a B-rep object's edges / loops / holes.
 
     Returns (objects, edge_set). One object with a spline per polyline, or one object
     per polyline with separate=True (named <name>_1, <name>_2, ...). Nothing is created
     when nothing matches."""
-    es = edge_set(ob, kind, tolerance, faces, project, crease_angle)
+    es = edge_set(ob, kind, tolerance, faces, project, crease_angle, holes)
     base = name or f"{ob.name}_{kind}"
     collection = ob.users_collection[0] if ob.users_collection else bpy.context.scene.collection
     common = {
@@ -143,6 +147,7 @@ def extract_curves(
         "project": project if isinstance(project, str) else float(project),
         "tolerance": float(tolerance),
         "faces": None if faces is None else sorted(int(f) for f in faces),
+        "holes": None if holes is None else sorted(int(i) for i in holes),
         "group": base,
     }
     objects = []

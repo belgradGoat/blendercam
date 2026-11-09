@@ -171,6 +171,23 @@ Projects any 2d curve on 3d surface
 - **Add Medial Mesh**
 ---
 
+## Flowline (B-rep)
+Finishing passes that follow the exact surfaces of a BRepKit B-rep object: rings around a
+dome, along fillets, across blends. The passes are never further apart than the stepover
+on the surface, and end exactly on each face's trim. See [B-rep Objects](brep.md).
+
+### Options
+- **Faces** - B-rep face ids to machine (empty: every face reachable from above); **Use Selected Faces** in Edit Mode
+- **Direction** - *Auto*, *U* or *V*
+- **Max Slope** - leave out surface steeper than this
+- **Reverse**
+- **Skin**
+- **Toolpath**
+  - **Stepover**
+  - **Detail**
+- **Preview Flowline**
+---
+
 ## **Overview of Principle Strategies**
 
 ![Strategy Overview](_static/opOverview.png)

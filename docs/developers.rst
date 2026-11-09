@@ -5,6 +5,7 @@ Developer Guide
    :maxdepth: 1
 
    overview
+   agent_api
    style
    testing
    workflows
@@ -12,6 +13,8 @@ Developer Guide
 This section is for people who want to contribute code to BlenderCAM, people who want to modify the addon for their needs, or anyone who simply want to better understand what is happening 'under the hood'.
 
 :doc:`overview` offers a guide to the addon files and how they relate to one another.
+
+:doc:`agent_api` documents the Python API for scripts and AI agents (Blender MCP).
 
 :doc:`style` gives tips on editors, linting, formatting etc.
 

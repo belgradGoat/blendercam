@@ -274,14 +274,23 @@ def applies(operation) -> bool:
 
 
 def check_operation(operation, warn: bool = True) -> list[dict]:
-    """Check the operation's cutter against each of its B-rep sources; keep the reports
-    and (warn=True) add warning lines to operation.info.warnings. Never raises."""
+    """Check the operation's cutter against each of its B-rep sources (a FLOWLINE operation:
+    only its faces, when it names them); keep the reports and (warn=True) add warning lines
+    to operation.info.warnings. Never raises."""
     begin_report(operation)
     cutter = cutter_of(operation)
     out = []
+    faces = None
+    if operation.strategy == "FLOWLINE":
+        from . import flow  # late: flow imports this module
+
+        try:  # only the faces the operation machines
+            faces = flow.parse_faces(operation.brep.flow_faces)
+        except FabexAPIError:
+            faces = None
     for ob in bridge.operation_brep_objects(operation):
         try:
-            rep = object_report(ob, cutter, setting(operation.skin))
+            rep = object_report(ob, cutter, setting(operation.skin), faces)
         except (BrepError, FabexAPIError) as e:
             rep = {"object": ob.name, "error": e.to_dict(), "messages": []}
             if warn:

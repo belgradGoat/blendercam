@@ -9,6 +9,7 @@ User Guide
    interface
    tools
    strategies
+   brep
    examplechain
    faq
    glossary
@@ -24,6 +25,8 @@ This section is for new users, containing basic info on how to install and use t
 :doc:`tools` offers an introduction to the various tools packaged with Fabex.
 
 :doc:`strategies` gives detailed descriptions of each Milling Strategy and its options.
+
+:doc:`brep` explains what Fabex does with exact B-rep models made in BRepKit.
 
 :doc:`examplechain` contains a step-by-step guide for completing these common operations.
 

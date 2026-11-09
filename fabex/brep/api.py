@@ -8,7 +8,7 @@ import bpy
 
 from ..exception import BrepError, FabexAPIError
 from ..utilities.api_utils import api_function
-from . import bridge, curves, fit, flow, ocl_mesh
+from . import bridge, curves, fit, flow, info, ocl_mesh
 from .brepcam import edges as brep_edges
 
 
@@ -24,7 +24,8 @@ def brep_kernel(refresh: bool = False) -> dict:
 @api_function("brep")
 def list_brep_objects() -> list[dict]:
     """All objects carrying BRepKit B-rep data, with face/edge counts when BRepKit is
-    available (an object can still be machined as a plain mesh without it)."""
+    available (an object can still be machined as a plain mesh without it). Next:
+    brep_info(name) for what each one is made of and how to machine it."""
     kernel = bridge.find_kernel()
     out = []
     for ob in bpy.data.objects:
@@ -48,6 +49,54 @@ def list_brep_objects() -> list[dict]:
                 entry["error"] = e.to_dict()
         out.append(entry)
     return out
+
+
+@api_function("brep")
+def brep_info(
+    obj: str,
+    faces: list | None = None,
+    tolerance: float = 0.00001,
+    wall_angle: float = 80.0,
+    edges: bool = False,
+) -> dict:
+    """Start here with a B-rep object: what it is made of and how to machine it, from the
+    exact surfaces, in world space (metres), for a tool from above (+Z). Nothing is changed.
+
+    Per face ("faces"):
+      face (id, used by every faces=[...] argument), name, role, surface (type "plane" |
+      "cylinder" | "cone" | "sphere" | "torus" | "freeform" with its normal / axis / center /
+      radius / minor_radius / half_angle), deviation (from that surface), curvature ("flat",
+      "concave": curving towards the tool like a fillet or hole, "convex", "saddle",
+      "mixed"), min_radius, area, z_min / z_max, bbox, slope_range (degrees from level: 0
+      faces up, 90 vertical, 180 faces down), undercut_fraction (area out of reach from
+      above), hole (the opening it belongs to) and neighbors (face, edge, kind).
+      role: "top" (highest level faces), "floor" (lower level faces), "slope", "wall"
+      (steeper than wall_angle), "hole_wall" (round holes), "fillet" / "round" (concave /
+      convex blends between two faces), "curved" (domes, freeform), "bottom" (lowest faces
+      facing down), "underside" (overhangs).
+    holes: openings with index (for extract_edges(holes=[...])), kind (through | blind |
+      open), circular, vertical, diameter, depth and z_top / z_bottom (to the deepest face
+      inside: the floor), walls_bottom (where the walls across the opening end), size_xy,
+      walls, faces (everything inside) and prismatic (vertical walls + level floor: 2.5D,
+      for POCKET / DRILL). bosses: loops whose walls stand out of the face.
+    counts (faces per surface type and role, edges per kind), closed (solid or sheet),
+    bbox_min / bbox_max / size, placement (top_z, bottom_z, below_depth_start: Fabex only
+    machines below Z 0 by default - the stock top), limits (min_concave_radius ->
+    max_ball_diameter, min_wall_radius -> max_end_mill_diameter, sharp_corners; details
+    in fit_check), warnings.
+    suggestions: a machining sequence as ready-to-run calls - place (Python to move the
+      part under Z 0), rough (PARALLEL, layers, skin), drill (per drill size), pocket
+      (prismatic openings), walls (other openings' vertical walls, profiled from inside),
+      finish (FLOWLINE on the curved faces not steeper than 80 degrees, ball and stepover
+      chosen from the limits), cut_out (CUTOUT). Z values in the calls assume "place" ran.
+      A starting point: check it with fit_check / flowline_preview and the computed paths.
+
+    faces: report only these faces (roles still use the whole body). tolerance: how close a
+    face must be to a plane / cylinder / ... to count as one. wall_angle: degrees from level
+    above which a face is a wall. edges: also list every edge (kind tangent | concave |
+    convex | naked | seam, angle, faces). Results are cached per object and settings."""
+    ob = curves.brep_source_object(obj)
+    return info.object_info(ob, faces, tolerance, wall_angle, edges)
 
 
 @api_function("brep")
@@ -92,6 +141,7 @@ def extract_edges(
     name: str | None = None,
     crease_angle: float = 30.0,
     replace: bool = True,
+    holes: list | None = None,
 ) -> dict:
     """Make curve objects from a B-rep object's exact edges, face loops or holes - sources
     for Profile, Pocket and Drill operations (POLY splines in world space).
@@ -99,8 +149,10 @@ def extract_edges(
     kind: "creases" (sharp edges, no tangent seams/fillet edges), "all", "naked" (open
       sheet boundaries), "shared", "outer_loops" (each face's boundary) or "holes" (inner
       face loops: drilled holes, pockets, slots; a through hole once, from its top end).
-    faces: B-rep face ids (see brep_holes / the mesh's 'brep_face_id' attribute) - only
+    faces: B-rep face ids (see brep_info / the mesh's 'brep_face_id' attribute) - only
       edges touching them, or only their loops / holes.
+    holes: kind "holes" only - these hole numbers ("index" in brep_info / brep_holes), e.g.
+      the holes of one drill size.
     tolerance: max distance from the exact curves, in metres (default 0.01 mm).
     project: "none" keeps 3D curves; "top" / "bottom" flattens each curve to its highest /
       lowest Z (holes: the hole's top / bottom, so a DRILL operation with
@@ -115,7 +167,7 @@ def extract_edges(
     and the B-rep object's world bounding box."""
     ob = curves.brep_source_object(obj)
     objects, es = curves.extract_curves(
-        ob, kind, tolerance, faces, project, crease_angle, separate, name, replace
+        ob, kind, tolerance, faces, project, crease_angle, separate, name, replace, holes
     )
     return {
         "object": ob.name,
@@ -132,11 +184,14 @@ def extract_edges(
 def brep_holes(obj: str, faces: list | None = None, tolerance: float = 0.00001) -> dict:
     """Holes and other openings in a B-rep object, in world space - nothing is created.
 
-    Each hole: kind ("through" | "blind" | "open"), circular, center (on the entry face),
-    radius / diameter (circular holes), axis, vertical, depth, z_top, z_bottom, size_xy,
-    the entry face / loop, wall faces and the other ends of through holes. Loops whose walls
-    stand out of the face are listed under "bosses" instead. faces: only these faces' loops.
-    Assumes outward normals (BRepKit solids are built that way)."""
+    Each hole: index (its number for extract_edges(holes=[...])), kind ("through" | "blind"
+    | "open"), circular, center (on the entry face), radius / diameter (circular holes),
+    axis, vertical, depth / z_top / z_bottom (to the deepest face inside), walls_bottom
+    (where the walls across the opening end), size_xy, the entry face / loop, wall faces,
+    faces (everything inside) and the other ends of through holes. Loops whose walls stand out of the face are listed
+    under "bosses" instead. faces: only these faces' loops (the numbers stay those of the
+    whole body). Assumes outward normals (BRepKit solids are built that way). brep_info()
+    reports the same holes with the rest of the part."""
     ob = curves.brep_source_object(obj)
     body = bridge.read_body(ob)
     if faces is not None:
@@ -145,17 +200,17 @@ def brep_holes(obj: str, faces: list | None = None, tolerance: float = 0.00001) 
             raise FabexAPIError(
                 "INVALID_VALUE", f"No faces {unknown}", {"faces": sorted(body.faces)}
             )
-        faces = {int(f) for f in faces}
     if not tolerance or tolerance <= 0:
         raise FabexAPIError("INVALID_VALUE", "tolerance must be positive", {})
-    found, warnings = brep_edges.find_holes(body, float(tolerance), bridge.world_matrix(ob), faces)
-    found = [brep_edges.public_hole(h) for h in found]
+    holes, bosses, warnings = brep_edges.indexed_holes(
+        body, float(tolerance), bridge.world_matrix(ob), faces
+    )
     return {
         "object": ob.name,
         "body_hash": bridge.body_hash(ob),
         **curves.object_bbox(ob),
-        "holes": [h for h in found if h["kind"] != "boss"],
-        "bosses": [h for h in found if h["kind"] == "boss"],
+        "holes": [brep_edges.public_hole(h) for h in holes],
+        "bosses": [brep_edges.public_hole(h) for h in bosses],
         "warnings": warnings,
     }
 

@@ -479,18 +479,56 @@ def _face_edges(body, fid) -> list:
     return [e for e in body.edges.values() if any(c.face == fid for c in e.coedges)]
 
 
+def _adjacency(body) -> dict:
+    """{face: [(neighbour face, this face's coedge, the neighbour's coedge)]}."""
+    adj = {}
+    for e in body.edges.values():
+        if not e.is_shared or e.coedges[0].face == e.coedges[1].face:
+            continue
+        a, b = e.coedges
+        adj.setdefault(a.face, []).append((b.face, a, b))
+        adj.setdefault(b.face, []).append((a.face, b, a))
+    return adj
+
+
+def _inner(c) -> bool:
+    return c.is_trim and c.loop >= 1
+
+
+def _region(adj, walls, entry) -> tuple[set, set]:
+    """(every face inside an opening, the far ends) - from its walls on, through faces' outer
+    boundaries only: it stops at the entry face, at another face's inner loop (the far end
+    of a through hole) and at its own faces' inner loops (a hole inside the opening, e.g.
+    drilled into a pocket floor, is an opening of its own)."""
+    seen, far = set(walls), set()
+    todo = list(walls)
+    while todo:
+        f = todo.pop()
+        for g, cf, cg in adj.get(f, ()):
+            if g == entry or g in seen or _inner(cf):
+                continue
+            if _inner(cg):
+                far.add((g, cg.loop))
+                continue
+            seen.add(g)
+            todo.append(g)
+    return seen, far
+
+
 def find_holes(body, tolerance: float, matrix=None, faces=None) -> tuple[list, list]:
     """Inner face loops grouped into openings. Returns (holes, warnings); each hole is a dict
     with the entry loop's world points under "_points" (dropped from JSON output).
 
-    A hole's walls are the faces across its loop's edges. Its ends are the faces beyond the
-    walls: another face's inner loop makes it a through hole, anything else (a floor) a
-    blind one. Depth is the walls' extent along the entry face's normal. Several loops
-    sharing the same walls are one hole, entered from the highest one. Loops whose walls
-    stand out of the face (a boss, e.g. a dome on a plate) get kind "boss"."""
+    A hole's walls are the faces across its loop's edges; its faces are the walls and
+    everything beyond them (floor fillets, the floor) up to another face's inner loop,
+    which makes it a through hole (otherwise it is blind). Depth and z_bottom reach the
+    deepest of its faces, walls_bottom where the walls end. Several loops sharing the same
+    walls are one hole, entered from the highest one. Loops whose walls stand out of the
+    face (a boss, e.g. a dome on a plate) get kind "boss"."""
     scale = linear_scale(matrix)
     tol = tolerance / scale
     index = _edge_index(body)
+    adj = _adjacency(body)
     warnings = []
     found = []
     for fid, face in body.faces.items():
@@ -506,11 +544,18 @@ def find_holes(body, tolerance: float, matrix=None, faces=None) -> tuple[list, l
                 if e is not None:
                     walls.update(c.face for c in e.coedges if c.face != fid)
             ends, through = set(), False
-            W = [P]
-            for w in walls:
+            region, far = _region(adj, walls, fid) if walls else (set(), set())
+            through = bool(far)
+            W, walls_bottom = [P], None
+            for w in sorted(region):
                 wf = body.faces[w]
                 for lj in range(len(wf.loops) if wf.loops else 1):
-                    W.append(sample_loop(wf, lj, tol * 10, matrix)[0])
+                    Q = sample_loop(wf, lj, tol * 10, matrix)[0]
+                    W.append(Q)
+                    if w in walls:
+                        low = float(Q[:, 2].min())
+                        walls_bottom = low if walls_bottom is None else min(walls_bottom, low)
+            for w in walls:
                 for e in _face_edges(body, w):
                     for c in e.coedges:
                         if c.face in walls or c.face == fid:
@@ -538,9 +583,9 @@ def find_holes(body, tolerance: float, matrix=None, faces=None) -> tuple[list, l
                     "face_name": getattr(face, "name", ""),
                     "loop": li,
                     "kind": (
-                        ("boss" if boss else ("through" if through else "blind"))
-                        if walls and ends
-                        else "open"
+                        "boss"
+                        if boss
+                        else ("through" if through else "blind") if walls and ends else "open"
                     ),
                     "circular": bool(circular),
                     "center": [float(x) for x in center],
@@ -552,8 +597,10 @@ def find_holes(body, tolerance: float, matrix=None, faces=None) -> tuple[list, l
                     "depth": depth,
                     "z_top": float(max(P[:, 2].max(), W[:, 2].max())),
                     "z_bottom": float(W[:, 2].min()),
+                    "walls_bottom": walls_bottom,
                     "size_xy": [float(x) for x in np.ptp(P[:, :2], axis=0)],
                     "walls": sorted(int(w) for w in walls),
+                    "faces": sorted(int(f) for f in region),
                     "other_ends": [],
                     "_points": P,
                 }
@@ -582,6 +629,51 @@ def public_hole(h: dict) -> dict:
     return {k: v for k, v in h.items() if not k.startswith("_")}
 
 
+def _number(h: dict, numbered: list):
+    """The whole-body number of a hole found among some faces' loops only."""
+    walls = frozenset(h["walls"])
+    for g in numbered:
+        if walls and frozenset(g["walls"]) == walls:
+            return g["index"]
+        if (g["face"], g["loop"]) == (h["face"], h["loop"]) or [h["face"], h["loop"]] in g[
+            "other_ends"
+        ]:
+            return g["index"]
+    return None
+
+
+def indexed_holes(body, tolerance: float, matrix=None, faces=None, select=None):
+    """(holes, bosses, warnings), each numbered ("index") over the whole body - the numbers
+    brep_info / brep_holes report and extract_edges(holes=[...]) selects by.
+
+    faces: only the inner loops of these faces (as find_holes; a through hole selected by its
+    lower face is entered from there). select: only these hole numbers (ValueError for
+    unknown ones)."""
+    found, warnings = find_holes(body, tolerance, matrix)
+    holes = [h for h in found if h["kind"] != "boss"]
+    bosses = [h for h in found if h["kind"] == "boss"]
+    for group in (holes, bosses):
+        for i, h in enumerate(group):
+            h["index"] = i
+    count = len(holes)
+    if faces is not None:
+        local, warnings = find_holes(body, tolerance, matrix, faces)
+        numbered_holes, numbered_bosses = holes, bosses
+        holes = [h for h in local if h["kind"] != "boss"]
+        bosses = [h for h in local if h["kind"] == "boss"]
+        for h in holes:
+            h["index"] = _number(h, numbered_holes)
+        for h in bosses:
+            h["index"] = _number(h, numbered_bosses)
+    if select is not None:
+        select = {int(i) for i in select}
+        unknown = sorted(select - set(range(count)))
+        if unknown:
+            raise ValueError(f"no holes {unknown} (the body has {count}, numbered from 0)")
+        holes = [h for h in holes if h["index"] in select]
+    return holes, bosses, warnings
+
+
 # --------------------------------------------------------------------------------------------
 # Entry point
 # --------------------------------------------------------------------------------------------
@@ -595,13 +687,18 @@ def extract(
     faces=None,
     project="none",
     crease_angle: float = 30.0,
+    holes=None,
 ) -> EdgeSet:
     """Polylines of a body's edges / loops / holes, in world space (see module docstring).
 
     tolerance: max distance between the polylines and the exact curves (world units).
-    faces: optional face ids - only edges touching them, or only their loops / holes."""
+    faces: optional face ids - only edges touching them, or only their loops / holes.
+    holes: only these hole numbers (kind "holes"; see indexed_holes)."""
     if kind not in KINDS:
         raise ValueError(f"kind must be one of {KINDS}, not {kind!r}")
+    select, holes = holes, []
+    if select is not None and kind != "holes":
+        raise ValueError("holes=[...] selects holes: use it with kind 'holes'")
     if not (_is_level(project) and np.isfinite(project)) and project not in PROJECT:
         raise ValueError(f"project must be one of {PROJECT} or a Z value, not {project!r}")
     if not tolerance or tolerance <= 0:
@@ -614,7 +711,6 @@ def extract(
     tol = tolerance / linear_scale(matrix)
     warnings: list[str] = []
     polylines: list[Polyline] = []
-    holes: list[dict] = []
 
     if kind in EDGE_KINDS:
         for eid, e in body.edges.items():
@@ -641,8 +737,7 @@ def extract(
                 warnings.append(f"outer loop of face {fid} hit the {MAX_POINTS}-point cap")
             polylines.append(Polyline(P, True, [], [fid], (fid, 0)))
     else:
-        holes, warnings = find_holes(body, tolerance, matrix, faces)
-        holes = [h for h in holes if h["kind"] != "boss"]
+        holes, _, warnings = indexed_holes(body, tolerance, matrix, faces, select)
         for h in holes:
             polylines.append(
                 Polyline(

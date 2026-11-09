@@ -58,7 +58,7 @@ from .brep import ocl_mesh as _brep_ocl_mesh
 from .brep import fit as _brep_fit
 from .brep import flow as _brep_flow
 
-API_VERSION = "0.6"
+API_VERSION = "0.7"
 
 # Properties applied first by set_operation_props, because others depend on them
 _PRIORITY_PROPS = (
@@ -333,6 +333,15 @@ def _compute_result(index, o, status, started_wall, started, export, extra_warni
         "ok": bool(ok),
         "status": state,
         "message": message,
+        # a failed calculation doesn't raise (the warnings and reports survive): see "error"
+        "error": (
+            None
+            if ok
+            else {
+                "code": "CANCELLED" if state == "CANCELLED" else "COMPUTE_FAILED",
+                "message": message,
+            }
+        ),
         "duration_s": round(time.monotonic() - started, 3),
         "path": _path_stats(o) if ok else None,
         "warnings": extra_warnings + _warnings(o),
@@ -393,16 +402,30 @@ def describe() -> dict:
             "status()",
             "create_operation('MyObject', strategy='PARALLEL', props={'cutter_type': 'BALLNOSE', "
             "'cutter_diameter': 0.006})",
+            "describe_operation_props('stepover')   # what a setting means, units, values",
             "compute_operation('<op>', export='/tmp/gcode')   # or start_compute() + job_status()",
             "path_info('<op>')",
         ],
         "quickstart_brep": [
             "list_brep_objects()   # BRepKit B-rep objects (exact surfaces)",
+            "brep_info('<obj>')   # faces, holes, limits + 'suggestions': ready-to-run calls",
+            "# move the part under Z 0 if brep_info says so (suggestions[step='place'])",
             "fit_check('<obj>', cutter_type='BALLNOSE', diameter=0.003)   # will it fit?",
-            "flowline_preview('<obj>', stepover=0.0005, create=False)   # passes per face",
-            "create_flowline_operation('<obj>', faces=None, diameter=0.003, stepover=0.00025)",
+            "flowline_preview('<obj>', faces=[...], stepover=0.0005, create=False)   # dry run",
+            "create_flowline_operation('<obj>', faces=[...], diameter=0.003, stepover=0.00025)",
+            "extract_edges('<obj>', kind='holes', holes=[0], project='bottom')   # Drill/Pocket",
             "compute_operation('<op>', export=False)   # result['brep_flowline'], ['brep_fit']",
-            "extract_edges('<obj>', kind='holes', project='bottom')   # curves for Drill / Profile",
+            "path_info('<op>'); export_gcode('<op>', '/some/dir')",
+        ],
+        "notes": [
+            "Fabex machines only below each operation's depth start (max_z, default 0): the "
+            "stock top is Z 0, so parts must sit below it",
+            "compute_operation blocks Blender; in the UI prefer start_compute + job_status",
+            "A failed calculation doesn't raise: compute results have ok False and error "
+            "{'code': 'COMPUTE_FAILED', 'message'} - check result['ok']",
+            "call_json takes the function's name first: call_json('create_operation', "
+            "obj_name=..., name='Rough')",
+            "Docs: docs/agent_api.md in the Fabex repository",
         ],
     }
 
@@ -437,10 +460,17 @@ def status() -> dict:
 
 
 @api_function("general")
-def call_json(name: str, **kwargs) -> str:
-    """Call API function `name` and return a JSON string: {"ok": true, "result": ...} or
-    {"ok": false, "error": {"code", "message", "details"}}. Never raises."""
+def call_json(function: str | None = None, /, **kwargs) -> str:
+    """Call an API function and return a JSON string: {"ok": true, "result": ...} or
+    {"ok": false, "error": {"code", "message", "details"}}. Never raises.
+
+    The function's name goes first: call_json("create_operation", obj_name="Part",
+    name="Rough") - keyword arguments, including "name", go to the function. (Without a
+    first argument, name=... is taken as the function's name.)"""
     try:
+        if function is None:
+            function = kwargs.pop("name", None)
+        name = function
         entry = FUNCTIONS.get(name)
         if entry is None or name == "call_json":
             raise FabexAPIError(
@@ -496,6 +526,92 @@ def get_operation(op) -> dict:
     """All settings of one operation as a flat dict ('movement.type', 'optimisation.use_exact'...)."""
     index, o = _resolve(op)
     return {"index": index, "props": _props_dict(o), "warnings": _warnings(o)}
+
+
+_UNITS = {"LENGTH": "m", "ROTATION": "radians", "TIME": "s", "VELOCITY": "m/s"}
+
+
+def _is_group(prop) -> bool:
+    fixed = getattr(prop, "fixed_type", None)
+    base = getattr(fixed, "base", None)
+    return fixed is not None and base is not None and base.identifier == "PropertyGroup"
+
+
+def _prop_rows(rna, prefix: str = "") -> list[dict]:
+    rows = []
+    for prop in rna.properties:
+        pid = prop.identifier
+        if pid == "rna_type" or prop.is_hidden or prop.type == "COLLECTION":
+            continue
+        if prefix and pid == "name":
+            continue
+        path = prefix + pid
+        if prop.type == "POINTER":
+            if _is_group(prop):
+                rows += _prop_rows(prop.fixed_type, path + ".")
+            else:
+                rows.append(
+                    {
+                        "path": path,
+                        "type": "POINTER",
+                        "points_to": prop.fixed_type.identifier,
+                        "name": prop.name,
+                        "description": prop.description,
+                    }
+                )
+            continue
+        if prop.is_readonly:
+            continue
+        row = {"path": path, "type": prop.type, "name": prop.name, "description": prop.description}
+        if prop.type in ("FLOAT", "INT"):
+            array = getattr(prop, "array_length", 0)
+            row["default"] = list(prop.default_array) if array else prop.default
+            row["min"], row["max"] = prop.hard_min, prop.hard_max
+            if prop.type == "FLOAT":
+                row["unit"] = _UNITS.get(prop.unit)
+                row["subtype"] = prop.subtype
+        elif prop.type == "ENUM":
+            if prop.is_enum_flag:
+                row["default"] = sorted(prop.default_flag)
+            else:
+                row["default"] = prop.default
+            row["items"] = [
+                {"id": i.identifier, "name": i.name, "description": i.description}
+                for i in prop.enum_items
+            ]
+            if not row["items"] and pid == "strategy":
+                row["items"] = [
+                    {"id": i[0], "name": i[1], "description": i[2]}
+                    for i in get_strategy_list(None, bpy.context)
+                ]
+        else:
+            row["default"] = prop.default
+        rows.append(row)
+    return rows
+
+
+@api_function("operations")
+def describe_operation_props(search: str | None = None) -> list[dict]:
+    """Every operation setting that create_operation(props=...) / set_operation_props()
+    accept: path (dots for nested groups, e.g. 'movement.type'), type, name, description,
+    default, and per type: min / max, unit ("m", "radians", or None: a plain number - a few
+    angle settings without a unit are degrees, see their description), allowed items of
+    enums (id, name, description). search: only settings whose path, name or description
+    contains this text (case-insensitive), e.g. "stepover", "movement.", "brep.", "angle".
+    Which settings a strategy uses is shown by Fabex's panels, not here: see the strategy
+    descriptions in describe() and get_operation() of an operation."""
+    rna = bpy.types.Scene.bl_rna.properties["cam_operations"].fixed_type
+    rows = jsonable(_prop_rows(rna))
+    if search:
+        q = str(search).lower()
+        rows = [
+            r
+            for r in rows
+            if q in r["path"].lower()
+            or q in (r.get("name") or "").lower()
+            or q in (r.get("description") or "").lower()
+        ]
+    return rows
 
 
 @api_function("operations", mutates=True)
@@ -633,7 +749,10 @@ def compute_operation(op, export=None, timeout_s: float | None = None) -> dict:
 
     export: None = follow the operation's 'auto_export' setting, False = don't export,
     True = export next to the .blend (or the export location), or a directory path.
-    Returns ok/status/message, path stats, warnings and the written G-code files.
+    Returns ok/status/message, path stats, warnings and the written G-code files
+    (gcode_files). A calculation that fails does NOT raise: ok is False and error is
+    {"code": "COMPUTE_FAILED" | "CANCELLED", "message"} - check result["ok"] (call_json's
+    own "ok" only says the call itself ran).
     For long computations in the UI use start_compute() + job_status()."""
     index, o = _resolve(op)
     _begin("sync")

@@ -292,7 +292,7 @@ check(
     "describe(): FLOWLINE strategy and create_flowline_operation",
     "create_flowline_operation" in names
     and any(s["id"] == "FLOWLINE" for s in d["strategies"])
-    and d["api_version"] == "0.6",
+    and tuple(map(int, d["api_version"].split("."))) >= (0, 6),
 )
 
 print(f"SUMMARY {sum(results)} / {len(results)}")

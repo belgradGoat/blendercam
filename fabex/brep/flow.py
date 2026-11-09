@@ -129,11 +129,13 @@ def pattern(ob, params: flowline.FlowlineParams, faces=None):
     try:
         result = flowline.flowline(kernel, body, params, M, faces_key)
     except flowline.PatternTooLarge as e:
-        raise FabexAPIError(
-            "TOO_LARGE",
-            str(e),
-            {"estimated_points": e.estimate, "max_points": e.limit},
-        ) from e
+        details = {"estimated_points": e.estimate, "max_points": e.limit}
+        message = str(e)
+        if e.estimate > e.limit:
+            factor = round(1.05 * (e.estimate / e.limit) ** 0.5, 2)
+            details["scale_steps_by"] = factor
+            message += f" (stepover and step_along x {factor} would fit)"
+        raise FabexAPIError("TOO_LARGE", message, details) from e
     except (ValueError, KeyError) as e:
         raise FabexAPIError(
             "INVALID_VALUE",
