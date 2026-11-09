@@ -603,4 +603,6 @@ async def oclResampleChunks(operation, chunks_to_resample, use_cached_mesh):
 
         pt_z = np.where(z > pt_z, z, pt_z)
 
+        pts[i_start : i_start + i_length, 2] = pt_z  # write the resampled heights back
+
         sample_index += i_length

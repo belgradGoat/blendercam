@@ -217,7 +217,10 @@ class CamPathChunk:
         mind = 100000000000
         self.cango = False
         closest = None
-        testlist = tested = [child for child in self.children]
+        testlist = [child for child in self.children]
+        # every chunk is walked once: `tested` used to be the same list as `testlist`, so
+        # chunks already walked were added again and deep hierarchies took exponential time
+        tested = {id(child) for child in testlist}
         ch = None
 
         while len(testlist) > 0:
@@ -227,16 +230,10 @@ class CamPathChunk:
                 self.cango = False
                 cango = True
 
-                [
-                    testlist.append(child)
-                    for child in chtest.children
-                    if not child.sorted and child not in tested
-                ]
-                [
-                    tested.append(child)
-                    for child in chtest.children
-                    if not child.sorted and child not in tested
-                ]
+                for child in chtest.children:
+                    if not child.sorted and id(child) not in tested:
+                        testlist.append(child)
+                        tested.add(id(child))
 
                 for child in chtest.children:
                     if not child.sorted:
