@@ -284,7 +284,8 @@ check(
     "describe() lists flowline_preview", "flowline_preview" in {f["name"] for f in d["functions"]}
 )
 check(
-    "API 0.5, TOO_LARGE documented", d["api_version"] == "0.5" and "TOO_LARGE" in d["error_codes"]
+    "API >= 0.5, TOO_LARGE documented",
+    tuple(map(int, d["api_version"].split("."))) >= (0, 5) and "TOO_LARGE" in d["error_codes"],
 )
 
 print(f"SUMMARY {sum(results)} / {len(results)}")

@@ -5,7 +5,12 @@ Import Properties, Register and Unregister Classes
 
 import bpy
 
-from ..brep.operators import CamBrepExtractEdges, CamBrepFitCheck
+from ..brep.operators import (
+    CamBrepExtractEdges,
+    CamBrepFitCheck,
+    CamBrepFlowFaces,
+    CamBrepFlowlinePreview,
+)
 from .bas_relief_ops import DoBasRelief, ProblemAreas
 from .bridges_op import CamBridgesAdd
 from .chain_ops import (
@@ -76,6 +81,8 @@ from .slice_op import CamSliceObjects
 classes = [
     CamBrepExtractEdges,
     CamBrepFitCheck,
+    CamBrepFlowFaces,
+    CamBrepFlowlinePreview,
     DoBasRelief,
     ProblemAreas,
     CamBridgesAdd,

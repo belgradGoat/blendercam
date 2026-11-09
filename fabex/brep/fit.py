@@ -254,7 +254,8 @@ def _compact(rep: dict) -> dict:
     return out
 
 
-def _warn(operation, text: str) -> None:
+def add_warning(operation, text: str) -> None:
+    """Add a warning line to the operation (once) and the log."""
     log.warning(text)
     line = text + "\n"
     if line not in operation.info.warnings:
@@ -284,7 +285,7 @@ def check_operation(operation, warn: bool = True) -> list[dict]:
         except (BrepError, FabexAPIError) as e:
             rep = {"object": ob.name, "error": e.to_dict(), "messages": []}
             if warn:
-                _warn(operation, f"{ob.name}: cutter fit not checked - {e.message}")
+                add_warning(operation, f"{ob.name}: cutter fit not checked - {e.message}")
         except Exception as e:  # never stop a compute over the check
             log.exception("Fit check failed")
             rep = {"object": ob.name, "error": {"code": "FAILED", "message": str(e)}}
@@ -297,7 +298,7 @@ def check_operation(operation, warn: bool = True) -> list[dict]:
             )
             if warn:
                 for line in rep["messages"]:
-                    _warn(operation, line)
+                    add_warning(operation, line)
         _reports.setdefault(operation.name, {})[ob.name] = rep
         out.append(rep)
     return out

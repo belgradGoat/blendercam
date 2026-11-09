@@ -249,9 +249,11 @@ def flowline_preview(
     faces: B-rep face ids (see fit_check / brep_holes / the mesh's 'brep_face_id'
       attribute); default every face - faces steeper than max_slope or facing down get no
       passes (see each face's "note").
-    op: an operation (name or index) to take the settings from: stepover = distance between
-      paths, step_along = distance along paths, order from its movement type (meander:
-      ZIGZAG, else ONEWAY), its cutter and brep.mesh_tolerance. Explicit arguments win.
+    op: an operation (name or index) to take the settings from - what a FLOWLINE operation
+      computes: stepover = distance between paths, step_along = distance along paths,
+      order and reverse from its movement settings (meander: ZIGZAG, else ONEWAY),
+      brep.flow_faces / flow_direction / flow_max_slope / flow_reverse, its cutter and skin,
+      brep.mesh_tolerance. Explicit arguments win.
     stepover: required without an op. step_along: default stepover / 2.
     direction: "AUTO" (default: rings around a pole, else along the longer direction),
       "U" or "V" - the face parameter the passes follow (each face's "direction" says
@@ -290,6 +292,8 @@ def flowline_preview(
     )
     if show not in flow.SHOW:
         raise FabexAPIError("INVALID_VALUE", f"show must be one of {flow.SHOW}", {"show": show})
+    if faces is None and o is not None:
+        faces = flow.parse_faces(o.brep.flow_faces)
     fl, cached = flow.pattern(ob, params, faces)
     preview = flow.preview_object(ob, fl, show, name, faces=faces) if create else None
     return {
@@ -301,3 +305,77 @@ def flowline_preview(
         "cutter": cutter.to_dict() if cutter is not None else None,
         **fl.stats(),
     }
+
+
+@api_function("brep", mutates=True)
+def create_flowline_operation(
+    obj: str,
+    faces: list | None = None,
+    cutter_type: str = "BALLNOSE",
+    diameter: float = 0.003,
+    corner_radius: float | None = None,
+    stepover: float = 0.00025,
+    step_along: float = 0.0002,
+    direction: str = "AUTO",
+    max_slope: float = 80.0,
+    name: str | None = None,
+    props: dict | None = None,
+) -> dict:
+    """Create a FLOWLINE finishing operation on a B-rep object (see flowline_preview for
+    what the passes do) - compute it with compute_operation / start_compute.
+
+    faces: B-rep face ids to machine (default: every face the cutter reaches from above).
+    cutter_type / diameter / corner_radius (BULLNOSE corner, BALLCONE ball radius): the
+    cutter. stepover: max 3D distance between passes; step_along: between points along a
+    pass. direction: "AUTO" | "U" | "V". max_slope: degrees from level. props: any other
+    operation properties (as set_operation_props), applied last - e.g.
+    {"optimisation.use_opencamlib": True, "movement.type": "CLIMB", "skin": 0.0001}.
+    Z comes from Fabex's usual sampling (OpenCAMLib when available), so the passes can't
+    go below the model. Layers are off (one finishing pass over the surface). The object has to
+    lie below the depth start (max_z, default 0: Fabex expects the stock top at Z 0). Returns create_operation's result plus a dry run of the pattern
+    (passes, points, max_gap and per face direction / passes / note)."""
+    from math import radians
+
+    from ..api import create_operation, set_operation_props  # late: fabex.api imports us
+
+    ob = curves.brep_source_object(obj)
+    if faces is not None:
+        faces = flow.parse_faces(faces)
+        unknown = sorted(set(faces) - set(bridge.read_body(ob).faces))
+        if unknown:
+            raise FabexAPIError("INVALID_VALUE", f"No faces {unknown}", {"faces": faces})
+    kind = str(cutter_type).upper()
+    if kind in ("BULLNOSE", "BALLCONE") and corner_radius is None:
+        raise FabexAPIError("INVALID_VALUE", f"{kind} needs corner_radius", {"cutter_type": kind})
+    if direction not in ("AUTO", "U", "V"):
+        raise FabexAPIError("INVALID_VALUE", "direction must be AUTO, U or V", {})
+    if not 0 < float(max_slope) <= 90:
+        raise FabexAPIError("INVALID_VALUE", "max_slope must be in (0, 90] degrees", {})
+    settings = {
+        "cutter_type": kind,
+        "cutter_diameter": float(diameter),
+        "distance_between_paths": float(stepover),
+        "distance_along_paths": float(step_along),
+        "brep.flow_faces": "" if faces is None else ", ".join(map(str, faces)),
+        "brep.flow_direction": direction,
+        "brep.flow_max_slope": radians(float(max_slope)),
+        "use_layers": False,  # finishing: one pass over the surface, not in Z slices
+    }
+    if corner_radius is not None:
+        settings["bull_corner_radius" if kind == "BULLNOSE" else "ball_radius"] = float(
+            corner_radius
+        )
+    created = create_operation(ob.name, strategy="FLOWLINE", name=name, props=settings)
+    if props:
+        set_operation_props(created["index"], props)
+    o = bpy.context.scene.cam_operations[created["index"]]
+    if curves.object_bbox(ob)["object_bbox_max"][2] > o.max_z + 1e-6:
+        created["warnings"].append(flow.depth_start_warning(o, [ob.name]))
+    dry = flowline_preview(ob.name, op=created["index"], create=False)
+    created["pattern"] = {
+        k: dry[k] for k in ("passes", "closed_passes", "points", "max_gap", "warnings")
+    }
+    created["pattern"]["faces"] = [
+        {k: f[k] for k in ("face", "name", "direction", "passes", "note")} for f in dry["faces"]
+    ]
+    return created

@@ -3,9 +3,13 @@
 'CAM B-rep Properties' - settings for operations whose sources are BRepKit B-rep objects.
 """
 
+from math import radians
+
 from bpy.props import (
     BoolProperty,
+    EnumProperty,
     FloatProperty,
+    StringProperty,
 )
 from bpy.types import PropertyGroup
 
@@ -53,4 +57,49 @@ class CAM_BREP_Properties(PropertyGroup):
         description="When computing a surface operation on BRepKit B-rep objects, check that "
         "the cutter fits the tightest concave curves and wall corners, and warn if not",
         default=True,
+    )
+
+    # --- Flowline strategy ------------------------------------------------------------------
+
+    flow_faces: StringProperty(
+        name="Faces",
+        description="B-rep face ids to machine, e.g. '12, 15, 31' (empty: every face the "
+        "cutter can reach from above). Use Selected Faces sets them from Edit Mode",
+        default="",
+        update=update_brep,
+    )
+
+    flow_direction: EnumProperty(
+        name="Direction",
+        description="Which way the passes run over each face",
+        items=(
+            (
+                "AUTO",
+                "Auto",
+                "Around a pole (dome, corner) when the face has one, else along the face's "
+                "longer direction",
+            ),
+            ("U", "U", "Along the face's U parameter lines"),
+            ("V", "V", "Along the face's V parameter lines"),
+        ),
+        default="AUTO",
+        update=update_brep,
+    )
+
+    flow_max_slope: FloatProperty(
+        name="Max Slope",
+        description="Leave out surface steeper than this (from level). Steep walls are better "
+        "machined by Waterline",
+        default=radians(80),
+        min=radians(1),
+        max=radians(90),
+        subtype="ANGLE",
+        update=update_brep,
+    )
+
+    flow_reverse: BoolProperty(
+        name="Reverse",
+        description="Run every pass the other way",
+        default=False,
+        update=update_brep,
     )

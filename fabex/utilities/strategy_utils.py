@@ -47,6 +47,8 @@ def update_strategy(o, context):
     """"""
     o.changed = True
     log.info("Update Strategy")
+    if o.strategy == "FLOWLINE" and o.use_layers:
+        o.use_layers = False  # a finishing strategy: layers would slice it into Z steps
     if o.machine_axes == "5" or (o.machine_axes == "4" and o.strategy_4_axis == "INDEXED"):
         # INDEXED 4 AXIS DOESN'T EXIST NOW...
         add_orientation_object(o)
@@ -228,6 +230,14 @@ def get_strategy_list(scene, context):
             "Medial axis, must be used with V or ball cutter, for engraving various width shapes with a single stroke ",
             "SHARPCURVE",
             12,
+        ),
+        (
+            "FLOWLINE",
+            "Flowline (B-rep)",
+            "Passes that follow the faces of a BRepKit B-rep object - around domes and "
+            "corners, along fillets and blends",
+            "MOD_CURVE",
+            13,
         ),
     ]
     return items

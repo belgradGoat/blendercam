@@ -9,7 +9,8 @@ drawn) for each state of the settings, and checks it ran without errors. The sam
 also draws the Curve Tools panel, the Fabex menu and the "B-rep Edges to Curves" dialog
 (both kinds of layout), which list the B-rep operator, and the cutter fit readout
 (brep.ui.draw_fit_check) before a check, for a cutter that fits, a stale result, a cutter
-that doesn't fit (a dish with a too big ball) and without the kernel.
+that doesn't fit (a dish with a too big ball) and without the kernel, and the Flowline
+settings (brep.ui.draw_flowline_settings) with the Operation Setup panel of a FLOWLINE op.
 Prints PASS/FAIL lines and a SUMMARY; the exit code is 0 when everything passed.
 """
 
@@ -96,6 +97,11 @@ try:
         "Dish", "PARALLEL", name="Dish", props={"cutter_type": "BALLNOSE", "cutter_diameter": 0.02}
     )
     o2 = bpy.context.scene.cam_operations["Dish"]
+    fx.create_flowline_operation("Ball", name="Flow", stepover=0.002, step_along=0.001)
+    o3 = bpy.context.scene.cam_operations["Flow"]
+    r3 = fx.compute_operation("Flow", export=False)
+    check("flowline computes", r3["ok"] and r3["brep_flowline"][0]["passes"] > 0, r3["message"])
+    ops_panel = importlib.import_module(FABEX + ".ui.panels.op_properties_panel")
 
     from types import SimpleNamespace
 
@@ -130,6 +136,17 @@ try:
             state["drawn"].add(f"fit {state['variant']}")
         except Exception as e:
             state["errors"].append((f"fit {state['variant']}", repr(e)))
+        try:
+            col = self.layout.column()
+            brep_ui.draw_flowline_settings(col, o3)
+            brep_ui.draw_flowline_settings(col, o)  # not a Flowline op: still draws
+            ops_panel.CAM_OPERATION_PROPERTIES_Panel.draw(
+                SimpleNamespace(layout=self.layout.column(), op=o3, level=0),
+                context,  # 0: no sub-panels (not in headers)
+            )
+            state["drawn"].add(f"flow {state['variant']}")
+        except Exception as e:
+            state["errors"].append((f"flow {state['variant']}", repr(e)))
 
     bpy.types.VIEW3D_HT_header.append(header_draw)
 except Exception as e:
@@ -143,6 +160,7 @@ def set_variant(name):
     bridge.find_kernel = real_find_kernel
     o.optimisation.use_opencamlib = True
     o.brep.use_exact_mesh = True
+    o3.brep.flow_faces = "1" if name in ("fit ok", "ocl off") else ""
     if name == "fit ok":
         reps = fit.check_operation(o)
         check("fit: 6 mm ball fits the ball", reps[0]["fits"] is True, reps[0]["messages"])
@@ -181,6 +199,16 @@ def poll():
                 sorted(map(str, state["drawn"])),
             )
             check("fit check operator is available", bpy.ops.object.cam_brep_fit_check.poll())
+            check(
+                "flowline settings and the operation panel drew in every state",
+                all("flow " + v in state["drawn"] for v in VARIANTS),
+            )
+            bpy.context.scene.cam_active_operation = 2
+            check(
+                "flowline operators are available",
+                bpy.ops.object.cam_brep_flowline_preview.poll()
+                and bpy.ops.object.cam_brep_flow_faces.poll(),
+            )
             check("no draw errors", not state["errors"], state["errors"])
             finish()
         name = VARIANTS[step["i"]]
@@ -193,7 +221,8 @@ def poll():
             step["wait"] = 0
             return 0.2
         step["wait"] += 1
-        if (name in state["drawn"] and "fit " + name in state["drawn"]) or step["wait"] > 25:
+        done = all(k in state["drawn"] for k in (name, "fit " + name, "flow " + name))
+        if done or step["wait"] > 25:
             check(f"panel helper drew: {name}", name in state["drawn"])
             step["i"] += 1
         return 0.1

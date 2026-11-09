@@ -7,6 +7,7 @@ import bpy
 from bpy.types import Panel
 
 from .parent_panel import CAMParentPanel
+from ...brep.ui import draw_flowline_settings
 
 
 class CAM_OPERATION_PROPERTIES_Panel(CAMParentPanel, Panel):
@@ -184,8 +185,13 @@ class CAM_OPERATION_PROPERTIES_Panel(CAMParentPanel, Panel):
             sub.label(text="Toolpath")
             sub.prop(self.op, "distance_between_paths", text="Stepover")
 
+        # Flowline Options
+        if self.op.strategy in ["FLOWLINE"]:
+            draw_flowline_settings(box, self.op)
+
         # Default Options
         if self.op.strategy not in [
+            "FLOWLINE",
             "CUTOUT",
             "CURVE",
             "WATERLINE",

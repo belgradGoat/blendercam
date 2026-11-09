@@ -23,6 +23,7 @@ from .strategies.cross import cross
 from .strategies.cutout import cutout
 from .strategies.curve_to_path import curve
 from .strategies.drill import drill
+from .strategies.flowline import flowline
 from .strategies.medial_axis import medial_axis
 from .strategies.outline_fill import outline_fill
 from .strategies.pencil import pencil
@@ -185,6 +186,7 @@ async def get_path_3_axis(context, operation):
         "CUTOUT": cutout,
         "CURVE": curve,
         "DRILL": drill,
+        "FLOWLINE": flowline,
         "MEDIAL_AXIS": medial_axis,
         "OUTLINEFILL": outline_fill,
         "PENCIL": pencil,

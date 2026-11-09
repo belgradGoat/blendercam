@@ -12,7 +12,7 @@ from bpy.props import BoolProperty, EnumProperty, FloatProperty
 from bpy.types import Operator
 
 from ..exception import CamException
-from . import bridge, curves, fit
+from . import bridge, curves, fit, flow
 from .bridge import FACE_ID_ATTR
 
 
@@ -216,5 +216,83 @@ class CamBrepFitCheck(Operator):
         ob = context.active_object
         if self.select and ob is not None and ob.mode == "EDIT" and ob.name in problem_faces:
             fit.select_faces(ob, problem_faces[ob.name])
+        _redraw(context)
+        return {"FINISHED"}
+
+
+def _flow_object(context, o):
+    """The B-rep object of operation `o` whose faces to use: the active one if it is a
+    source, else the only source (None if ambiguous)."""
+    objects = bridge.operation_brep_objects(o)
+    active = context.active_object
+    if active is not None and active in objects:
+        return active
+    return objects[0] if len(objects) == 1 else None
+
+
+class CamBrepFlowFaces(Operator):
+    """Machine only the faces selected in Edit Mode with the active Flowline operation
+    (or, with Clear, every face again)"""
+
+    bl_idname = "object.cam_brep_flow_faces"
+    bl_label = "Use Selected Faces"
+    bl_options = {"REGISTER", "UNDO"}
+
+    clear: BoolProperty(name="Clear", description="Machine every face again", default=False)
+
+    @classmethod
+    def poll(cls, context):
+        o = active_operation(context)
+        return o is not None and bool(bridge.operation_brep_objects(o))
+
+    def execute(self, context):
+        o = active_operation(context)
+        if self.clear:
+            o.brep.flow_faces = ""
+            self.report({"INFO"}, "Flowline: every face")
+            _redraw(context)
+            return {"FINISHED"}
+        ob = _flow_object(context, o)
+        if ob is None:
+            self.report({"ERROR"}, "Make one of the operation's B-rep objects active")
+            return {"CANCELLED"}
+        faces = selected_brep_faces(ob)
+        if not faces:
+            self.report({"ERROR"}, f"Select faces of '{ob.name}' in Edit Mode first")
+            return {"CANCELLED"}
+        o.brep.flow_faces = ", ".join(map(str, faces))
+        self.report({"INFO"}, f"Flowline: {len(faces)} face(s) of {ob.name}")
+        _redraw(context)
+        return {"FINISHED"}
+
+
+class CamBrepFlowlinePreview(Operator):
+    """Show the active operation's flowline passes as curves on its B-rep objects (before
+    the cutter is dropped onto the model)"""
+
+    bl_idname = "object.cam_brep_flowline_preview"
+    bl_label = "Preview Flowline"
+    bl_options = {"REGISTER", "UNDO"}
+
+    @classmethod
+    def poll(cls, context):
+        o = active_operation(context)
+        return o is not None and bool(bridge.operation_brep_objects(o))
+
+    def execute(self, context):
+        o = active_operation(context)
+        try:
+            results = flow.operation_preview(o)
+        except CamException as e:  # FabexAPIError / BrepError too
+            self.report({"ERROR"}, str(e))
+            return {"CANCELLED"}
+        lines = []
+        for ob, preview, fl in results:
+            s = fl.stats()
+            lines.append(
+                f"{ob.name}: {s['passes']} passes, {s['points']:,} points"
+                + ("" if preview is not None else " (nothing to show)")
+            )
+        self.report({"INFO"}, "; ".join(lines))
         _redraw(context)
         return {"FINISHED"}

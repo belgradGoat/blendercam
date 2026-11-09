@@ -56,8 +56,9 @@ from .brep import api as _brep_api  # noqa: F401
 from .brep import bridge as _brep_bridge
 from .brep import ocl_mesh as _brep_ocl_mesh
 from .brep import fit as _brep_fit
+from .brep import flow as _brep_flow
 
-API_VERSION = "0.5"
+API_VERSION = "0.6"
 
 # Properties applied first by set_operation_props, because others depend on them
 _PRIORITY_PROPS = (
@@ -340,6 +341,8 @@ def _compute_result(index, o, status, started_wall, started, export, extra_warni
         "brep_meshes": _brep_ocl_mesh.report(o),
         # B-rep sources of surface operations: does the cutter fit (see fit_check)
         "brep_fit": _brep_fit.report(o, compact=True),
+        # FLOWLINE operations: the pattern per B-rep object (passes, max gap, per face)
+        "brep_flowline": _brep_flow.report(o),
     }
     if ok and export.enabled:
         result["gcode_files"] = _find_exports(export.directory, _export_name(o), started_wall)
@@ -392,6 +395,14 @@ def describe() -> dict:
             "'cutter_diameter': 0.006})",
             "compute_operation('<op>', export='/tmp/gcode')   # or start_compute() + job_status()",
             "path_info('<op>')",
+        ],
+        "quickstart_brep": [
+            "list_brep_objects()   # BRepKit B-rep objects (exact surfaces)",
+            "fit_check('<obj>', cutter_type='BALLNOSE', diameter=0.003)   # will it fit?",
+            "flowline_preview('<obj>', stepover=0.0005, create=False)   # passes per face",
+            "create_flowline_operation('<obj>', faces=None, diameter=0.003, stepover=0.00025)",
+            "compute_operation('<op>', export=False)   # result['brep_flowline'], ['brep_fit']",
+            "extract_edges('<obj>', kind='holes', project='bottom')   # curves for Drill / Profile",
         ],
     }
 
@@ -602,6 +613,7 @@ def _start(index, o, export):
     _activate(index)
     _brep_ocl_mesh.begin_report(o)
     _brep_fit.begin_report(o)
+    _brep_flow.begin_report(o)
     if not source_valid(o, bpy.context):
         raise FabexAPIError(
             "SOURCE_INVALID",

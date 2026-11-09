@@ -6,7 +6,7 @@ Drawing helpers for B-rep settings, called from Fabex's panels (no classes regis
 import bpy
 
 from ..utilities.simple_utils import unit_value_to_string
-from . import bridge, fit, ocl_mesh
+from . import bridge, fit, flow, ocl_mesh
 from .bridge import operation_brep_objects
 
 
@@ -83,3 +83,42 @@ def draw_fit_check(layout, o) -> None:
             n = sum(1 for c in rep["sharp_corners"] if c.get("rest"))
             rest = unit_value_to_string(rep["corner_rest_max"], 3).strip()
             col.label(text=f"{n} sharp inside corner(s): up to {rest} left", icon="INFO")
+
+
+def draw_flowline_settings(layout, o) -> None:
+    """The FLOWLINE strategy's settings, the preview button and the last pattern's stats."""
+    objects = operation_brep_objects(o)
+    col = layout.column(align=True)
+    if not objects:
+        col.label(text="Needs a BRepKit B-rep object", icon="ERROR")
+    elif bridge.find_kernel() is None:
+        col.label(text="BRepKit not found", icon="ERROR")
+    row = col.row(align=True)
+    row.prop(o.brep, "flow_faces")
+    row.operator("object.cam_brep_flow_faces", text="", icon="RESTRICT_SELECT_OFF")
+    if o.brep.flow_faces.strip():
+        row.operator("object.cam_brep_flow_faces", text="", icon="X").clear = True
+    col.prop(o.brep, "flow_direction")
+    col.prop(o.brep, "flow_max_slope")
+    row = col.row()
+    row.use_property_split = False
+    row.prop(o.brep, "flow_reverse")
+    col.prop(o, "skin")
+    box = col.box()
+    sub = box.column(align=True)
+    sub.label(text="Toolpath")
+    sub.prop(o, "distance_between_paths", text="Stepover")
+    sub.prop(o, "distance_along_paths", text="Detail")
+    col.operator("object.cam_brep_flowline_preview", icon="HIDE_OFF")
+    hashes = {ob.name: bridge.body_hash(ob) for ob in objects}
+    for rep in flow.report(o):
+        if rep["object"] not in hashes:
+            continue
+        if rep["body_hash"] != hashes[rep["object"]]:
+            col.label(text=f"{rep['object']}: changed since the last pattern", icon="INFO")
+            continue
+        gap = unit_value_to_string(rep["max_gap"], 3).strip()
+        col.label(
+            text=f"{rep['object']}: {rep['passes']} passes, max gap {gap}",
+            icon="CHECKMARK" if rep["passes"] else "ERROR",
+        )

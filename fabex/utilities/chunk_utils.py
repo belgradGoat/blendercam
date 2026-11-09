@@ -937,7 +937,8 @@ async def sample_chunks(o, pathSamples, layers):
                 layeractivechunks[i] = CamPathChunkBuilder([])
 
             # PARENTING
-            if o.strategy == "PARALLEL" or o.strategy == "CROSS" or o.strategy == "OUTLINEFILL":
+            # (not FLOWLINE: its passes need no order between them, nearest first is right)
+            if o.strategy in ["PARALLEL", "CROSS", "OUTLINEFILL"]:
                 timing_start(sortingtime)
                 parent_child_distance(thisrunchunks[i], lastrunchunks[i], o)
                 timing_add(sortingtime)
@@ -947,7 +948,7 @@ async def sample_chunks(o, pathSamples, layers):
     progress("~ Checking Relations Between Paths ~")
     timing_start(sortingtime)
 
-    if o.strategy == "PARALLEL" or o.strategy == "CROSS" or o.strategy == "OUTLINEFILL":
+    if o.strategy in ["PARALLEL", "CROSS", "OUTLINEFILL", "FLOWLINE"]:
         if len(layers) > 1:  # sorting help so that upper layers go first always
             for i in range(0, len(layers) - 1):
                 parents = []
@@ -1028,7 +1029,7 @@ async def connect_chunks_low(chunks, o):
         if ch.count() > 0:
             if lastch is not None and (ch.distance_start(pos, o) < mergedist):
                 # CARVE should lift allways, when it goes below surface...
-                if o.strategy in ["PARALLEL", "CROSS", "PENCIL"]:
+                if o.strategy in ["PARALLEL", "CROSS", "PENCIL", "FLOWLINE"]:
                     # for these paths sorting happens after sampling, thats why they need resample the connection
                     between = sample_path_low(o, lastch, ch, True)
                 else:
@@ -1037,7 +1038,7 @@ async def connect_chunks_low(chunks, o):
                 if (
                     o.optimisation.use_opencamlib
                     and o.optimisation.use_exact
-                    and (o.strategy in ["PARALLEL", "CROSS", "PENCIL"])
+                    and (o.strategy in ["PARALLEL", "CROSS", "PENCIL", "FLOWLINE"])
                 ):
                     chunks_to_resample.append(
                         (connectedchunks[-1], connectedchunks[-1].count(), between.count())

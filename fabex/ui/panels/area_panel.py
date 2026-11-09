@@ -99,7 +99,7 @@ class CAM_AREA_Panel(CAMParentPanel, Panel):
 
         # Draw Ambient
         if self.level >= 1:
-            if self.op.strategy in ["BLOCK", "SPIRAL", "CIRCLES", "PARALLEL", "CROSS"]:
+            if self.op.strategy in ["BLOCK", "SPIRAL", "CIRCLES", "PARALLEL", "CROSS", "FLOWLINE"]:
                 box = main.box()
                 col = box.column(align=True)
                 col.label(text="Ambient")
@@ -112,7 +112,15 @@ class CAM_AREA_Panel(CAMParentPanel, Panel):
 
         # Draw Limit Curve
         if self.level >= 1:
-            if self.op.strategy in ["BLOCK", "SPIRAL", "CIRCLES", "PARALLEL", "CROSS", "WATERLINE"]:
+            if self.op.strategy in [
+                "BLOCK",
+                "SPIRAL",
+                "CIRCLES",
+                "PARALLEL",
+                "CROSS",
+                "WATERLINE",
+                "FLOWLINE",
+            ]:
                 main.use_property_split = False
                 col = main.column(align=False)
                 header, panel = col.panel("limit", default_closed=True)
