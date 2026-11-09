@@ -36,6 +36,8 @@ ERROR_CODES = {
     "BREP_PARSE_FAILED": "The B-rep data could not be read by the available BRepKit",
     "TESSELLATION_FAILED": "BRepKit could not tessellate the B-rep",
     "TOO_LARGE": "The result would be too big (details has the estimate and the limit)",
+    "TOOL_CONFLICT": "One tool number (T) is used for different cutters",
+    "MACHINE_LIMIT": "Beyond what the machine profile allows (magazine, coolant, travel)",
     "CAM_ERROR": "A Fabex error without a specific code",
     "INTERNAL_ERROR": "Unexpected error - details has the exception",
 }

@@ -10,6 +10,7 @@ User Guide
    tools
    strategies
    brep
+   fanuc
    examplechain
    faq
    glossary
@@ -27,6 +28,8 @@ This section is for new users, containing basic info on how to install and use t
 :doc:`strategies` gives detailed descriptions of each Milling Strategy and its options.
 
 :doc:`brep` explains what Fabex does with exact B-rep models made in BRepKit.
+
+:doc:`fanuc` covers programs for FANUC machining centres such as the Robodrill: the post processor, the machine profile, drilling cycles and the program check.
 
 :doc:`examplechain` contains a step-by-step guide for completing these common operations.
 

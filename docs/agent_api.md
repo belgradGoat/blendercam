@@ -72,6 +72,11 @@ are also attributes of the module (`fx.brep_info("Part")`).
 | | `create_flowline_operation(obj, ...)` | A Flowline finishing operation |
 | | `cam_tessellation(obj, tolerance)` | The exact mesh OpenCAMLib samples |
 | | `brep_kernel(refresh)` | Where BRepKit was found |
+| machine | `machine_profile()`, `set_machine(profile, preset, reset)` | The FANUC machine programs are written for |
+| | `tool_library(type)`, `set_tool_library(tools)` | Tools for planning: catalogue or your turret map |
+| | `create_chain(name, operations)` | Operations exported together, in this order |
+| | `export_program(operations or chain, directory, ...)` | One FANUC program, with its check |
+| | `check_gcode(path or text)` | Check a FANUC program as the control reads it |
 
 The docstrings (in `describe()`) document every argument and result field.
 
@@ -142,6 +147,29 @@ Hole numbers are the same in `brep_info()`, `brep_holes()` and `extract_edges(ho
 Face ids are BRepKit's face ids, also stored per polygon in the display mesh's
 `brep_face_id` attribute.
 
+## FANUC machining centres
+
+`set_machine()` describes the machine, a FANUC Robodrill by default, and switches Fabex to
+the FANUC post. Then `export_program()` writes one program for computed operations, with:
+- tool changes;
+- `G43`;
+- coolant;
+- AICC;
+- canned drilling cycles.
+
+It returns a report that includes `check`: the program read back and checked as G-code.
+Give each different cutter its own `cutter_id` (T number); one number used for two cutters
+raises `TOOL_CONFLICT`. Per-operation settings live under `autocam.*`: `coolant`, `aicc`,
+`drill_cycle`, `peck`, `dwell`, `r_clearance`, `tap_pitch`. See
+[FANUC Machining Centres](fanuc.md).
+
+```python
+fx.set_machine(preset="robodrill_d21mib5", profile={"spindle_max": 24000})
+fx.set_operation_props("Drill 5", {"cutter_id": 2, "autocam.drill_cycle": "G83"})
+r = fx.export_program(["Pocket", "Drill 5", "Cutout"], directory="/tmp/nc", program_number=1001)
+r["check"]["ok"], r["check"]["errors"], r["minutes"], r["tools"]
+```
+
 ## Results worth knowing
 
 `compute_operation()` returns `ok`, `status`, `message`, `error`, path stats (`points`,
@@ -172,6 +200,8 @@ The codes are in `describe()["error_codes"]`. The common ones:
 | `INVALID_PROPERTY`, `INVALID_VALUE` | Rejected setting: the details give close matches or allowed values |
 | `NOT_A_BREP`, `BREPKIT_UNAVAILABLE` | Not a BRepKit object, or BRepKit not found |
 | `TOO_LARGE` | A pattern would be too big: the details say by how much |
+| `TOOL_CONFLICT` | One T number used for different cutters (or twice in a tool library) |
+| `MACHINE_LIMIT` | Beyond the machine profile: magazine, tool number, coolant M-code |
 | `BUSY` | Another computation is running |
 | `UNSUPPORTED` | e.g. `start_compute()` in background mode |
 | `COMPUTE_FAILED`, `CANCELLED` | In compute results (`result["error"]`), not raised |
@@ -180,7 +210,8 @@ The codes are in `describe()["error_codes"]`. The common ones:
 
 - **Pure tests** (no Blender) of the B-rep geometry in `fabex/brep/brepcam/`:
   `FABEX_BREPKIT_PATH=~/path/to/BRepKit python -m pytest tests/brep`. Use a Python with numpy
-  and pytest.
+  and pytest. `python -m pytest tests/autocam` tests `fabex/autocam/camcore/`: the program
+  writer (golden programs), the checker, moves, the machine profile and tools.
 - **Headless checks**, run with
   `FABEX_BREPKIT_PATH=... blender -b --factory-startup -P tests/<check>.py`, and again with
   `FABEX_TEST_BREPKIT_EXTENSION=1` to use the BRepKit extension:
@@ -194,13 +225,15 @@ The codes are in `describe()["error_codes"]`. The common ones:
   | `brep_flowline_check.py` | Preview |
   | `brep_flowline_op_check.py` | The strategy: gouge check and G-code reference |
   | `brep_info_check.py` | Classification, and every suggestion run and computed |
+  | `autocam_fanuc_check.py` | FANUC programs: profile, tools, cycles at the B-rep holes, chains |
 - `tests/test_api_parity.py` computes the reference operations through the UI operator and
   through the API, and compares the G-code.
 
 ## Not in the API yet
 
 - Tabs (bridges) on profiles: `bpy.ops.scene.cam_bridges_add()` on the active operation.
-- Chains (several operations in one G-code file with tool changes).
+- Chains for the other post processors are written by Fabex's own chain operator; the
+  API's `export_program()` writes FANUC programs only.
 - Which settings each strategy uses (Fabex's panels decide; `describe_operation_props()` lists
   them all).
 - The PARALLEL pattern sits on a fixed grid, so next to a wall it can leave up to a stepover.

@@ -7,6 +7,7 @@ import bpy
 from bpy.types import Panel
 
 from .parent_panel import CAMParentPanel
+from ...autocam.ui import draw_machine_box
 
 
 class CAM_MACHINE_Panel(CAMParentPanel, Panel):
@@ -56,6 +57,7 @@ class CAM_MACHINE_Panel(CAMParentPanel, Panel):
             row.operator("fabex.edit_user_post_processor", text="Edit", icon="GREASEPENCIL")
         else:
             col.prop(self.machine, "post_processor")
+        draw_machine_box(col, context.scene)
         # Units
         row = col.row(align=True)
         row.prop(context.scene.cam_machine, "unit_system")

@@ -4,7 +4,6 @@ Blender Operator definitions are in this file.
 They mostly call the functions from 'utils.py'
 """
 
-from importlib import import_module
 from math import pi
 import os
 import subprocess
@@ -27,10 +26,9 @@ from .async_op import (
     AsyncOperatorMixin,
 )
 
-from .. import __package__ as base_package
 from ..constants import was_hidden_dict
 from ..exception import CamException
-from ..gcode.gcode_export import export_gcode_path
+from ..gcode.gcode_export import PROCESSORS, export_gcode_path
 from ..toolpath import get_path
 
 from ..utilities.async_utils import progress_async
@@ -312,29 +310,7 @@ class CalculatePath(Operator, AsyncOperatorMixin):
 
         m = context.scene.cam_machine
 
-        processor_extension = {
-            "ANILAM": ("anilam_crusader_m", ".tap"),
-            "CENTROID": ("centroid1", ".tap"),
-            "EMC": ("emc2b", ".ngc"),
-            "FADAL": ("fadal", ".tap"),
-            "GRAVOS": ("gravos", ".nc"),
-            "GRBL": ("grbl", ".gcode"),
-            "HM50": ("hm50", ".tap"),
-            "HEIDENHAIN": ("heiden", ".H"),
-            "HEIDENHAIN530": ("heiden530", ".H"),
-            "ISO": ("iso", ".tap"),
-            "LYNX_OTTER_O": ("lynx_otter_o", ".nc"),
-            "MACH3": ("mach3", ".tap"),
-            "SHOPBOT MTC": ("shopbot_mtc", ".sbp"),
-            "SIEGKX1": ("siegkx1", ".tap"),
-            "TNC151": ("tnc151", ".tap"),
-            "USER": ("user", ".gcode"),
-            "WIN-PC": ("winpc", ".din"),
-        }
-
-        module = f".post_processors.{processor_extension[m.post_processor][0]}"
-        postprocessor = import_module(module, base_package)
-        extension = processor_extension[m.post_processor][1]
+        extension = PROCESSORS[m.post_processor][1]
 
         name_raw = operation.name if operation.link_operation_file_names else operation.filename
         name = safe_filename(name_raw)

@@ -519,14 +519,9 @@ def get_chain_operations(chain):
     Returns:
         list: A list of operations associated with the given chain object.
     """
-    # chop = []
-    # for cho in chain.operations:
-    #     for so in bpy.context.scene.cam_operations:
-    #         if so.name == cho.name:
-    #             chop.append(so)\
-
+    # in the chain's order (the UI can move operations up and down in a chain)
     operations = bpy.context.scene.cam_operations
-    chop = [so for so in operations for cho in chain.operations if so.name == cho.name]
+    chop = [so for cho in chain.operations for so in operations if so.name == cho.name]
     return chop
 
 

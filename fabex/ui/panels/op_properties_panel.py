@@ -7,6 +7,7 @@ import bpy
 from bpy.types import Panel
 
 from .parent_panel import CAMParentPanel
+from ...autocam.ui import draw_autocam_settings
 from ...brep.ui import draw_flowline_settings
 
 
@@ -213,6 +214,10 @@ class CAM_OPERATION_PROPERTIES_Panel(CAMParentPanel, Panel):
             col.label(text="Toolpath")
             col.prop(self.op, "distance_between_paths", text="Stepover")
             col.prop(self.op, "distance_along_paths", text="Detail")
+
+        # Machining centre (post processor FANUC): tool number, coolant, AICC, drill cycle
+        draw_autocam_settings(layout, self.op, context.scene)
+        layout.use_property_split = True
 
         # A & B, Array, Bridges Options
         if self.level >= 1:

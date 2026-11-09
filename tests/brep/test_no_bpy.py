@@ -3,8 +3,10 @@
 import re
 import subprocess
 import sys
+from pathlib import Path
 
-from conftest import BREP_DIR
+# (not imported from conftest: tests/autocam has a conftest of its own)
+BREP_DIR = Path(__file__).resolve().parents[2] / "fabex" / "brep"
 
 BREPCAM = BREP_DIR / "brepcam"
 FORBIDDEN = re.compile(r"^\s*(import|from)\s+(bpy|mathutils|bmesh)\b", re.MULTILINE)

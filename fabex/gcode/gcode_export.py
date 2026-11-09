@@ -31,6 +31,29 @@ from ..utilities.simple_utils import (
     unit_value_to_string,
 )
 
+# post processor -> (module in post_processors, file extension). FANUC is written by
+# autocam/fanuc_export.py instead of a HeeksCNC-style post module.
+PROCESSORS = {
+    "ANILAM": ("anilam_crusader_m", ".tap"),
+    "CENTROID": ("centroid1", ".tap"),
+    "EMC": ("emc2b", ".ngc"),
+    "FANUC": (None, ".nc"),
+    "FADAL": ("fadal", ".tap"),
+    "GRAVOS": ("gravos", ".nc"),
+    "GRBL": ("grbl", ".gcode"),
+    "HM50": ("hm50", ".tap"),
+    "HEIDENHAIN": ("heiden", ".H"),
+    "HEIDENHAIN530": ("heiden530", ".H"),
+    "ISO": ("iso", ".tap"),
+    "LYNX_OTTER_O": ("lynx_otter_o", ".nc"),
+    "MACH3": ("mach3", ".tap"),
+    "SHOPBOT MTC": ("shopbot_mtc", ".sbp"),
+    "SIEGKX1": ("siegkx1", ".tap"),
+    "TNC151": ("tnc151", ".tap"),
+    "USER": ("user", ".gcode"),
+    "WIN-PC": ("winpc", ".din"),
+}
+
 
 def export_gcode_path(filename, vertslist, operations):
     """Exports G-code using the Heeks NC Adopted Library.
@@ -85,29 +108,16 @@ def export_gcode_path(filename, vertslist, operations):
     else:
         basefilename = s.cam_names.default_export_location + safe_filename(filename)
 
-    processor_extension = {
-        "ANILAM": ("anilam_crusader_m", ".tap"),
-        "CENTROID": ("centroid1", ".tap"),
-        "EMC": ("emc2b", ".ngc"),
-        "FADAL": ("fadal", ".tap"),
-        "GRAVOS": ("gravos", ".nc"),
-        "GRBL": ("grbl", ".gcode"),
-        "HM50": ("hm50", ".tap"),
-        "HEIDENHAIN": ("heiden", ".H"),
-        "HEIDENHAIN530": ("heiden530", ".H"),
-        "ISO": ("iso", ".tap"),
-        "LYNX_OTTER_O": ("lynx_otter_o", ".nc"),
-        "MACH3": ("mach3", ".tap"),
-        "SHOPBOT MTC": ("shopbot_mtc", ".sbp"),
-        "SIEGKX1": ("siegkx1", ".tap"),
-        "TNC151": ("tnc151", ".tap"),
-        "USER": ("user", ".gcode"),
-        "WIN-PC": ("winpc", ".din"),
-    }
+    if m.post_processor == "FANUC":
+        from ..autocam.fanuc_export import export_fanuc
 
-    module = f".post_processors.{processor_extension[m.post_processor][0]}"
+        export_fanuc(basefilename + PROCESSORS["FANUC"][1], vertslist, operations)
+        progress(f"Exported in {time.time() - t:.2f} s")
+        return
+
+    module = f".post_processors.{PROCESSORS[m.post_processor][0]}"
     postprocessor = import_module(module, base_package)
-    extension = processor_extension[m.post_processor][1]
+    extension = PROCESSORS[m.post_processor][1]
 
     unit_system = s.unit_settings.system
     unitcorr = (

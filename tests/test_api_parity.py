@@ -157,7 +157,12 @@ def main(selected):
         for c, f, v_op, v_api, parity in rows:
             print(f"{c + '/' + f:<{width}}  {v_op:<8}  {v_api:<7}  {parity}")
         print(f"\n{len(rows)} files, {failures} parity failures")
-        return 1 if failures else 0
+        # a file the operator doesn't write at all (MISSING) usually means a setting saved in
+        # the test .blend now reads differently - e.g. an enum item inserted mid-list
+        off = sum(1 for *_, v_op, v_api, _ in rows if "ok" not in (v_op, v_api))
+        missing = sum(1 for *_, v_op, _, _ in rows if v_op == "MISSING")
+        print(f"{off} files off the reference ({missing} MISSING)")
+        return 1 if failures or missing else 0
 
 
 if __name__ == "__main__":

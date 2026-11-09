@@ -144,6 +144,14 @@ class CAM_MACHINE_Properties(PropertyGroup):
                 "User Custom",
                 "Customizable User Post Processor (based on ISO)",
             ),
+            # last on purpose: .blend files store this enum by position
+            (
+                "FANUC",
+                "FANUC (Robodrill)",
+                "FANUC 0i/31i machining centres such as the Robodrill: tool changes with G43, "
+                "canned drilling cycles, AICC; uses the machine profile (Fabex API "
+                "set_machine)",
+            ),
         ),
         description="Post Processor",
         default="MACH3",

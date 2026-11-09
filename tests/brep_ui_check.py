@@ -148,6 +148,19 @@ try:
         except Exception as e:
             state["errors"].append((f"flow {state['variant']}", repr(e)))
 
+        try:
+            col = self.layout.column()
+            autocam_ui.draw_machine_box(col, context.scene)
+            autocam_ui.draw_autocam_settings(col, o, context.scene)
+            # (the Machine panel itself uses layout panels, which headers can't hold; it
+            # calls draw_machine_box under the post processor)
+            assert machine_panel.draw_machine_box is autocam_ui.draw_machine_box
+            state["drawn"].add(f"machine {state['variant']}")
+        except Exception as e:
+            state["errors"].append((f"machine {state['variant']}", repr(e)))
+
+    autocam_ui = importlib.import_module(FABEX + ".autocam.ui")
+    machine_panel = importlib.import_module(FABEX + ".ui.panels.machine_panel")
     bpy.types.VIEW3D_HT_header.append(header_draw)
 except Exception as e:
     _fail_hard(e)
@@ -178,9 +191,13 @@ def set_variant(name):
         o.brep.use_exact_mesh = False
     elif name == "no kernel":
         bridge.find_kernel = lambda refresh=False: None
+    elif name == "fanuc":
+        fx.set_machine(preset="robodrill_d21mib5")
+        o.autocam.coolant = "MIST"
 
 
 VARIANTS = ["exact", "fit ok", "fit stale", "fit misfit", "ocl off", "exact off", "no kernel"]
+VARIANTS += ["fanuc"]  # post processor FANUC: the machine box and the operation's settings
 step = {"i": 0, "wait": 0}
 
 
@@ -209,6 +226,11 @@ def poll():
                 bpy.ops.object.cam_brep_flowline_preview.poll()
                 and bpy.ops.object.cam_brep_flow_faces.poll(),
             )
+            check(
+                "machine panel and machining-centre settings drew (also with FANUC)",
+                all("machine " + v in state["drawn"] for v in VARIANTS),
+            )
+            check("FANUC post selected", bpy.context.scene.cam_machine.post_processor == "FANUC")
             check("no draw errors", not state["errors"], state["errors"])
             finish()
         name = VARIANTS[step["i"]]
@@ -221,7 +243,9 @@ def poll():
             step["wait"] = 0
             return 0.2
         step["wait"] += 1
-        done = all(k in state["drawn"] for k in (name, "fit " + name, "flow " + name))
+        done = all(
+            k in state["drawn"] for k in (name, "fit " + name, "flow " + name, "machine " + name)
+        )
         if done or step["wait"] > 25:
             check(f"panel helper drew: {name}", name in state["drawn"])
             step["i"] += 1

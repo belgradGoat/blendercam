@@ -58,7 +58,11 @@ from .brep import ocl_mesh as _brep_ocl_mesh
 from .brep import fit as _brep_fit
 from .brep import flow as _brep_flow
 
-API_VERSION = "0.7"
+# Machining-centre functions (machine profile, tools, chains, FANUC programs)
+from .autocam import api as _autocam_api  # noqa: F401
+from .autocam import state as _autocam_state
+
+API_VERSION = "0.8"
 
 # Properties applied first by set_operation_props, because others depend on them
 _PRIORITY_PROPS = (
@@ -417,6 +421,15 @@ def describe() -> dict:
             "compute_operation('<op>', export=False)   # result['brep_flowline'], ['brep_fit']",
             "path_info('<op>'); export_gcode('<op>', '/some/dir')",
         ],
+        "quickstart_machining_centre": [
+            "machine_profile()   # FANUC Robodrill defaults: travel, spindle, magazine, blocks",
+            "set_machine(preset='robodrill_d21mib5', profile={'spindle_max': 24000})",
+            "tool_library(type='END')   # catalogue (or your turret map: set_tool_library)",
+            "set_operation_props('<op>', {'cutter_id': 3, 'autocam.coolant': 'FLOOD'})",
+            "export_program(['<op1>', '<op2>'], directory='/some/dir', program_number=1001)",
+            "#  -> report['check']['ok'], ['errors'], ['minutes'], ['tools']",
+            "check_gcode(path='/some/dir/<title>.nc')",
+        ],
         "notes": [
             "Fabex machines only below each operation's depth start (max_z, default 0): the "
             "stock top is Z 0, so parts must sit below it",
@@ -425,9 +438,18 @@ def describe() -> dict:
             "{'code': 'COMPUTE_FAILED', 'message'} - check result['ok']",
             "call_json takes the function's name first: call_json('create_operation', "
             "obj_name=..., name='Rough')",
+            "export_program writes FANUC programs: give every different cutter its own "
+            "cutter_id (T number) - one T number used for two cutters raises TOOL_CONFLICT",
             "Docs: docs/agent_api.md in the Fabex repository",
         ],
     }
+
+
+def _autocam_machine_name(s) -> str | None:
+    try:
+        return _autocam_state.machine(s).name
+    except Exception:
+        return None
 
 
 @api_function("general")
@@ -450,6 +472,7 @@ def status() -> dict:
         "render_engine": s.render.engine,
         "units": {"system": s.unit_settings.system, "scale_length": s.unit_settings.scale_length},
         "post_processor": s.cam_machine.post_processor,
+        "machine": _autocam_machine_name(s),
         "export_dir": _export_dir() or None,
         "operations": [o.name for o in s.cam_operations],
         "active_operation": s.cam_active_operation if len(s.cam_operations) else None,

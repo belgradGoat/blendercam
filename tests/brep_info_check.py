@@ -93,7 +93,10 @@ ob = make_object("Part", body, LOC)
 # --- what an agent sees ------------------------------------------------------------------------
 d = fx.describe()
 names = {f["name"] for f in d["functions"]}
-check("API 0.7 lists brep_info", d["api_version"] == "0.7" and "brep_info" in names)
+check(
+    "API >= 0.7 lists brep_info",
+    tuple(map(int, d["api_version"].split("."))) >= (0, 7) and "brep_info" in names,
+)
 check("quick start begins with brep_info", "brep_info" in d["quickstart_brep"][1])
 check(
     "list_brep_objects points at brep_info",
