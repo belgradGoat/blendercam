@@ -8,9 +8,8 @@ import bpy
 
 from ..exception import BrepError, FabexAPIError
 from ..utilities.api_utils import api_function
-from . import bridge, curves, fit, ocl_mesh
+from . import bridge, curves, fit, flow, ocl_mesh
 from .brepcam import edges as brep_edges
-from .brepcam import fitcheck as brep_fitcheck
 
 
 @api_function("brep")
@@ -203,26 +202,7 @@ def fit_check(
         from ..api import _resolve  # late import: fabex.api imports this module
 
         o = _resolve(op)[1]
-    cutter = fit.cutter_of(o) if o is not None else None
-    if cutter_type is not None or diameter is not None or corner_radius is not None:
-        kind = (cutter_type or (cutter.type if cutter else "")).upper()
-        dia = diameter if diameter is not None else (cutter.diameter if cutter else None)
-        if not kind or dia is None:
-            raise FabexAPIError(
-                "INVALID_VALUE",
-                "Give cutter_type and diameter (or an op to take the cutter from)",
-                {"cutter_types": list(brep_fitcheck.CHECKED)},
-            )
-        if not dia > 0:
-            raise FabexAPIError("INVALID_VALUE", "diameter must be positive", {"diameter": dia})
-        corner = corner_radius
-        if corner is None and cutter is not None and cutter.type == kind:
-            corner = cutter.corner_radius
-        if kind in ("BULLNOSE", "BALLCONE") and corner is None:
-            raise FabexAPIError(
-                "INVALID_VALUE", f"{kind} needs corner_radius", {"cutter_type": kind}
-            )
-        cutter = brep_fitcheck.Cutter(kind, float(dia), None if corner is None else float(corner))
+    cutter = fit.cutter_from(o, cutter_type, diameter, corner_radius)
     if skin is None:
         skin = fit.setting(o.skin) if o is not None else 0.0
     if skin < 0:
@@ -236,3 +216,88 @@ def fit_check(
         float(corner_angle),
         bool(all_faces),
     )
+
+
+@api_function("brep", mutates=True)
+def flowline_preview(
+    obj: str,
+    faces: list | None = None,
+    op=None,
+    stepover: float | None = None,
+    step_along: float | None = None,
+    direction: str | None = None,
+    order: str | None = None,
+    max_slope: float | None = None,
+    cutter_type: str | None = None,
+    diameter: float | None = None,
+    corner_radius: float | None = None,
+    tolerance: float | None = None,
+    show: str = "contact",
+    name: str | None = None,
+    create: bool = True,
+    max_points: int | None = None,
+) -> dict:
+    """Flowline finishing passes over a B-rep object's faces, from the exact surfaces -
+    shown as a curve object (one POLY spline per pass, in cutting order). World space,
+    metres, tool from above (+Z).
+
+    Passes follow each face's parameter lines (around a dome, along a fillet, across a
+    blend); adjacent passes are never further apart than `stepover` (3D, on the surface),
+    points are every `step_along` (3D) and passes end exactly on the face's trim (holes,
+    outline) and on the slope limit.
+
+    faces: B-rep face ids (see fit_check / brep_holes / the mesh's 'brep_face_id'
+      attribute); default every face - faces steeper than max_slope or facing down get no
+      passes (see each face's "note").
+    op: an operation (name or index) to take the settings from: stepover = distance between
+      paths, step_along = distance along paths, order from its movement type (meander:
+      ZIGZAG, else ONEWAY), its cutter and brep.mesh_tolerance. Explicit arguments win.
+    stepover: required without an op. step_along: default stepover / 2.
+    direction: "AUTO" (default: rings around a pole, else along the longer direction),
+      "U" or "V" - the face parameter the passes follow (each face's "direction" says
+      which was used).
+    order: "ZIGZAG" (default) | "ONEWAY". max_slope: degrees from level (default 80).
+    cutter_type / diameter / corner_radius: the cutter; its round tip (ball, bull nose
+      corner, ball cone tip) is placed on the contact points. Flat-bottomed and other
+      cutters use the contact points' XY.
+    tolerance: trim accuracy in metres (default 0.00001).
+    show: "contact" (the points on the surface) or "tool" (where a round tip touching them
+      has its lowest point). name: default "<obj>_flowline"; previewing again replaces it.
+    create: False only computes the pattern (stats, nothing created).
+    max_points: refuse patterns larger than this (default 4,000,000) - error TOO_LARGE
+      with the estimate.
+    Returns the preview object name, totals (passes, closed_passes, points, length, max_gap)
+    and per face: direction, stations, passes, points, length, max_gap, closed, poles,
+    steep_points / misfit_points (left out: too steep / tip too big for the curve), note.
+    Patterns are cached per object and settings."""
+    ob = curves.brep_source_object(obj)
+    o = None
+    if op is not None:
+        from ..api import _resolve  # late import: fabex.api imports this module
+
+        o = _resolve(op)[1]
+    cutter = fit.cutter_from(o, cutter_type, diameter, corner_radius)
+    params = flow.params_for(
+        o,
+        cutter,
+        stepover=stepover,
+        step_along=step_along,
+        direction=direction,
+        order=order,
+        max_slope=max_slope,
+        tolerance=tolerance,
+        max_points=max_points,
+    )
+    if show not in flow.SHOW:
+        raise FabexAPIError("INVALID_VALUE", f"show must be one of {flow.SHOW}", {"show": show})
+    fl, cached = flow.pattern(ob, params, faces)
+    preview = flow.preview_object(ob, fl, show, name, faces=faces) if create else None
+    return {
+        "object": ob.name,
+        "body_hash": bridge.body_hash(ob),
+        "cached": cached,
+        "preview": preview.name if preview is not None else None,
+        "show": show,
+        "cutter": cutter.to_dict() if cutter is not None else None,
+        **fl.stats(),
+    }

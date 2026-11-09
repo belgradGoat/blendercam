@@ -57,7 +57,7 @@ from .brep import bridge as _brep_bridge
 from .brep import ocl_mesh as _brep_ocl_mesh
 from .brep import fit as _brep_fit
 
-API_VERSION = "0.4"
+API_VERSION = "0.5"
 
 # Properties applied first by set_operation_props, because others depend on them
 _PRIORITY_PROPS = (
@@ -371,7 +371,8 @@ def describe() -> dict:
         "package = next(n for n in bpy.context.preferences.addons.keys() if n.endswith('.fabex'))",
         "conventions": [
             "Operations are addressed by name or index (op=...)",
-            "Lengths in metres, angles in radians",
+            "Lengths in metres; operation property angles in radians (as Blender stores "
+            "them); B-rep function arguments ending in _angle or named max_slope in degrees",
             "Errors raise FabexAPIError; call_json() returns {'ok': False, 'error': {...}} instead",
             "Property paths for nested settings use dots, e.g. 'movement.type'",
         ],

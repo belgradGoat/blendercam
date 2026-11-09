@@ -101,7 +101,7 @@ def _spline_meta(pl) -> dict:
     return meta
 
 
-def _write_object(name: str, polylines, tag: dict, collection, replace: bool):
+def write_object(name: str, polylines, tag: dict, collection, replace: bool):
     cu = _curve_data(name, polylines)
     ob = bpy.data.objects.get(name)
     if ob is not None and replace and ob.type == "CURVE" and source_info(ob) is not None:
@@ -150,10 +150,10 @@ def extract_curves(
         if separate:
             for i, pl in enumerate(es.polylines):
                 tag = {**common, "index": i, "splines": [_spline_meta(pl)]}
-                objects.append(_write_object(f"{base}_{i + 1}", [pl], tag, collection, replace))
+                objects.append(write_object(f"{base}_{i + 1}", [pl], tag, collection, replace))
         else:
             tag = {**common, "index": None, "splines": [_spline_meta(p) for p in es.polylines]}
-            objects.append(_write_object(base, es.polylines, tag, collection, replace))
+            objects.append(write_object(base, es.polylines, tag, collection, replace))
     if replace:
         # curves left over from an earlier extraction into the same group (made here only)
         keep = {o.name for o in objects}

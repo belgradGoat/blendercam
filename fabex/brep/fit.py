@@ -89,6 +89,30 @@ def cutter_of(o) -> fitcheck.Cutter:
     return fitcheck.Cutter(o.cutter_type, setting(o.cutter_diameter), corner)
 
 
+def cutter_from(o=None, cutter_type=None, diameter=None, corner_radius=None):
+    """The cutter of operation `o` (or None), with explicit arguments overriding it.
+    Raises FabexAPIError(INVALID_VALUE) for an incomplete or impossible cutter."""
+    cutter = cutter_of(o) if o is not None else None
+    if cutter_type is None and diameter is None and corner_radius is None:
+        return cutter
+    kind = (cutter_type or (cutter.type if cutter else "")).upper()
+    dia = diameter if diameter is not None else (cutter.diameter if cutter else None)
+    if not kind or dia is None:
+        raise FabexAPIError(
+            "INVALID_VALUE",
+            "Give cutter_type and diameter (or an op to take the cutter from)",
+            {"cutter_types": list(fitcheck.CHECKED)},
+        )
+    if not dia > 0:
+        raise FabexAPIError("INVALID_VALUE", "diameter must be positive", {"diameter": dia})
+    corner = corner_radius
+    if corner is None and cutter is not None and cutter.type == kind:
+        corner = cutter.corner_radius
+    if kind in ("BULLNOSE", "BALLCONE") and corner is None:
+        raise FabexAPIError("INVALID_VALUE", f"{kind} needs corner_radius", {"cutter_type": kind})
+    return fitcheck.Cutter(kind, float(dia), None if corner is None else float(corner))
+
+
 def _len(x) -> str:
     return unit_value_to_string(x, 3).strip()
 
