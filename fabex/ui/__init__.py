@@ -30,6 +30,7 @@ from .panels.feedrate_panel import CAM_FEEDRATE_Panel
 from .panels.gcode_panel import CAM_GCODE_Panel
 from .panels.info_panel import CAM_INFO_Panel
 from .panels.machine_panel import CAM_MACHINE_Panel
+from .panels.autocam_panel import CAM_AUTOCAM_Panel
 from .panels.material_panel import CAM_MATERIAL_Panel
 from .panels.movement_panel import CAM_MOVEMENT_Panel
 from .panels.op_properties_panel import CAM_OPERATION_PROPERTIES_Panel
@@ -41,7 +42,6 @@ from .pie_menu.pie_cam import VIEW3D_MT_PIE_CAM
 from .pie_menu.pie_chains import VIEW3D_MT_PIE_Chains
 from .pie_menu.pie_pack_slice_relief import VIEW3D_MT_PIE_PackSliceRelief
 from .pie_menu.pie_operation import VIEW3D_MT_PIE_Operation
-
 
 classes = [
     # .menus
@@ -70,6 +70,7 @@ classes = [
     CAM_CUTTER_Panel,
     CAM_GCODE_Panel,
     CAM_MACHINE_Panel,
+    CAM_AUTOCAM_Panel,
     CAM_Popup_Panel,
     VIEW3D_PT_tools_curvetools,
     VIEW3D_PT_tools_create,

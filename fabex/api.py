@@ -62,7 +62,7 @@ from .brep import flow as _brep_flow
 from .autocam import api as _autocam_api  # noqa: F401
 from .autocam import state as _autocam_state
 
-API_VERSION = "0.8"
+API_VERSION = "0.9"
 
 # Properties applied first by set_operation_props, because others depend on them
 _PRIORITY_PROPS = (
@@ -430,6 +430,15 @@ def describe() -> dict:
             "#  -> report['check']['ok'], ['errors'], ['minutes'], ['tools']",
             "check_gcode(path='/some/dir/<title>.nc')",
         ],
+        "quickstart_automatic_cam": [
+            "plan = plan_cam('<B-rep obj>', material='6061')   # nothing changes yet",
+            "#  -> plan['operations'] (why, cutting data), ['tools'], ['coverage']['uncovered'],",
+            "#     ['rest'], ['warnings'], ['stock'], ['placement']",
+            "cutting_data('EM10', '6061', 'pocket')   # what the plan's numbers come from",
+            "result = apply_plan()   # or apply_plan(edited_plan); moves the part to the plan",
+            "#  -> result['ok'], ['program']['file'], ['program']['check'], ['verify']",
+            "verify_program()   # again, e.g. after editing operations and export_program",
+        ],
         "notes": [
             "Fabex machines only below each operation's depth start (max_z, default 0): the "
             "stock top is Z 0, so parts must sit below it",
@@ -440,7 +449,9 @@ def describe() -> dict:
             "obj_name=..., name='Rough')",
             "export_program writes FANUC programs: give every different cutter its own "
             "cutter_id (T number) - one T number used for two cutters raises TOOL_CONFLICT",
-            "Docs: docs/agent_api.md in the Fabex repository",
+            "plan_cam / apply_plan place the part so Z 0 is its top and X0 Y0 the stock's "
+            "centre; re-applying a plan replaces only what the last plan for that part made",
+            "Docs: docs/agent_api.md and docs/autocam.md in the Fabex repository",
         ],
     }
 

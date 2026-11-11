@@ -5,6 +5,7 @@ Import Properties, Register and Unregister Classes
 
 import bpy
 
+from ..autocam.operators import CamAutocamApply, CamAutocamPlan, CamAutocamVerify
 from ..brep.operators import (
     CamBrepExtractEdges,
     CamBrepFitCheck,
@@ -77,8 +78,10 @@ from .preset_ops import (
 from .simulation_ops import CAMSimulate, CAMSimulateChain
 from .slice_op import CamSliceObjects
 
-
 classes = [
+    CamAutocamPlan,
+    CamAutocamApply,
+    CamAutocamVerify,
     CamBrepExtractEdges,
     CamBrepFitCheck,
     CamBrepFlowFaces,

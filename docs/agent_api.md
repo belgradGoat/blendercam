@@ -77,6 +77,10 @@ are also attributes of the module (`fx.brep_info("Part")`).
 | | `create_chain(name, operations)` | Operations exported together, in this order |
 | | `export_program(operations or chain, directory, ...)` | One FANUC program, with its check |
 | | `check_gcode(path or text)` | Check a FANUC program as the control reads it |
+| plan | `cutting_data(tool, material, engagement)` | rpm, feeds, depth and width of cut for a tool in aluminium |
+| | `plan_cam(obj, material, options)` | A machining plan for the top of a B-rep part; changes nothing |
+| | `apply_plan(plan, compute, export, verify)` | Make the plan: operations, chain, paths, program, verification |
+| | `verify_program(path, obj, stock)` | Simulate a FANUC program on the stock and compare with the part |
 
 The docstrings (in `describe()`) document every argument and result field.
 
@@ -170,6 +174,35 @@ r = fx.export_program(["Pocket", "Drill 5", "Cutout"], directory="/tmp/nc", prog
 r["check"]["ok"], r["check"]["errors"], r["minutes"], r["tools"]
 ```
 
+## Automatic CAM
+
+`plan_cam()` plans one setup from the top for 2.5D features, and nothing in the scene
+changes. The plan holds:
+- the stock and the placement (Z 0 at the part's top, X0 Y0 at the stock's centre);
+- the tools, numbered;
+- the operations in order, each with its Fabex properties, cutting data and `why`;
+- `coverage`: which faces each operation finishes, and the faces left uncovered with the
+  reason;
+- `rest`: sharp corners left with the tool's radius;
+- `holes`: drilled or milled, and why;
+- `warnings`.
+
+`apply_plan()` makes it real and returns:
+- `computed` per operation;
+- `program`: the file, the minutes and the check;
+- `verify`: gouge, leftover (expected / unexpected), collisions, plunges, and per
+  operation the removal, air cutting and slotting.
+
+`ok` means everything computed, the program checks, and there is no gouge or crash.
+Applying again replaces only what the last plan for that part made. See
+[Automatic CAM](autocam.md).
+
+```python
+plan = fx.plan_cam("Bracket", material="6061", options={"allowance_side": 0.003})
+result = fx.apply_plan()
+result["ok"], result["program"]["file"], result["verify"]["leftover"]["unexpected"]
+```
+
 ## Results worth knowing
 
 `compute_operation()` returns `ok`, `status`, `message`, `error`, path stats (`points`,
@@ -202,6 +235,7 @@ The codes are in `describe()["error_codes"]`. The common ones:
 | `TOO_LARGE` | A pattern would be too big: the details say by how much |
 | `TOOL_CONFLICT` | One T number used for different cutters (or twice in a tool library) |
 | `MACHINE_LIMIT` | Beyond the machine profile: magazine, tool number, coolant M-code |
+| `PLAN_INVALID`, `PLAN_STALE` | Not a plan from `plan_cam`, or the part changed or moved since planning |
 | `BUSY` | Another computation is running |
 | `UNSUPPORTED` | e.g. `start_compute()` in background mode |
 | `COMPUTE_FAILED`, `CANCELLED` | In compute results (`result["error"]`), not raised |
@@ -211,7 +245,11 @@ The codes are in `describe()["error_codes"]`. The common ones:
 - **Pure tests** (no Blender) of the B-rep geometry in `fabex/brep/brepcam/`:
   `FABEX_BREPKIT_PATH=~/path/to/BRepKit python -m pytest tests/brep`. Use a Python with numpy
   and pytest. `python -m pytest tests/autocam` tests `fabex/autocam/camcore/`: the program
-  writer (golden programs), the checker, moves, the machine profile and tools.
+  writer (golden programs), the checker, moves, the machine profile and tools, cutting
+  data, the planner (on synthetic parts) and the verifier. It needs shapely too, for
+  example with the versions Blender 4.5 has:
+  `uv run --no-project --python 3.11 --with pytest --with numpy==1.26.4 --with
+  fabex/wheels/shapely-2.0.5-cp311-cp311-macosx_11_0_arm64.whl python -m pytest tests/autocam`.
 - **Headless checks**, run with
   `FABEX_BREPKIT_PATH=... blender -b --factory-startup -P tests/<check>.py`, and again with
   `FABEX_TEST_BREPKIT_EXTENSION=1` to use the BRepKit extension:
@@ -226,10 +264,17 @@ The codes are in `describe()["error_codes"]`. The common ones:
   | `brep_flowline_op_check.py` | The strategy: gouge check and G-code reference |
   | `brep_info_check.py` | Classification, and every suggestion run and computed |
   | `autocam_fanuc_check.py` | FANUC programs: profile, tools, cycles at the B-rep holes, chains |
+  | `autocam_plan_check.py` | Automatic CAM on two parts: plan, apply, program check, verify; re-applying, an edited plan, a stale plan |
 - `tests/test_api_parity.py` computes the reference operations through the UI operator and
   through the API, and compares the G-code.
 
 ## Not in the API yet
+
+- Automatic CAM covers one setup from the top and 2.5D features. Still to come:
+  - 3D finishing of fillets and curved faces;
+  - rest machining;
+  - the second setup (the bottom);
+  - tapping, chamfering and adaptive clearing.
 
 - Tabs (bridges) on profiles: `bpy.ops.scene.cam_bridges_add()` on the active operation.
 - Chains for the other post processors are written by Fabex's own chain operator; the

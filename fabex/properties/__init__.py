@@ -16,7 +16,7 @@ from bpy.props import (
 # CAM_OPERATION_Properties, which is imported and registered
 # in the main ('cam') __init__ file, to allow these and other dependencies
 # to register first
-from .autocam_props import CAM_AUTOCAM_Properties
+from .autocam_props import CAM_AUTOCAM_Properties, CAM_AUTOCAM_SceneProperties
 from .brep_props import CAM_BREP_Properties
 from .chain_props import CAM_CHAIN_Properties, CAM_OP_REFERENCE_Properties
 from .info_props import CAM_INFO_Properties
@@ -66,6 +66,7 @@ from ..utilities.operation_utils import update_operation
 
 classes = [
     CAM_AUTOCAM_Properties,
+    CAM_AUTOCAM_SceneProperties,
     CAM_BREP_Properties,
     CAM_OP_REFERENCE_Properties,
     CAM_CHAIN_Properties,
@@ -102,6 +103,9 @@ def register():
     scene.gcode_output_type = StringProperty(
         name="Gcode Output Type",
         default="",
+    )
+    scene.cam_autocam = PointerProperty(
+        type=CAM_AUTOCAM_SceneProperties,
     )
     scene.cam_machine = PointerProperty(
         type=CAM_MACHINE_Properties,
@@ -198,6 +202,7 @@ def unregister():
     del scene.cam_active_chain
     del scene.cam_active_operation
     del scene.cam_machine
+    del scene.cam_autocam
     del scene.gcode_output_type
     del scene.cam_text
 

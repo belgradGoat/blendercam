@@ -31,7 +31,10 @@ Role - what the face is for machining from above:
     slope      flat, facing up, between level and wall_angle
     wall       steeper than wall_angle everywhere (sides, pocket walls)
     hole_wall  the wall of a round hole (see brepcam.edges.find_holes); the walls of other
-               openings (pockets, slots) are walls. Both get the opening's index ("hole")
+               openings (pockets, slots) are walls. Both get the opening's index ("hole").
+               Each opening also gets "bottom": through / cone (a drill point, with its
+               included "tip_angle") / flat / other, and "prismatic" (only vertical walls
+               and level floors)
     fillet     a concave blend: a curved face tangent to two other faces that turns from
                one to the other (fillets in pockets, along floors and around bosses,
                spherical corners)
@@ -644,6 +647,24 @@ def _prismatic(hole: dict, infos: dict, wall_cos: float) -> bool:
     return bool(hole["walls"])
 
 
+def hole_bottom(hole: dict, infos: dict, tol: float) -> tuple[str, float | None]:
+    """(bottom, tip angle) of an opening: "through"; "cone" with its included angle in
+    degrees (a drill point); "flat" (a level floor, maybe with fillets: milled); "other" (a
+    ball end, a dome...); or the kind for openings and bosses ("open", "boss")."""
+    if hole["kind"] == "through":
+        return "through", None
+    if hole["kind"] != "blind":
+        return hole["kind"], None
+    beyond = [infos[f] for f in hole["faces"] if f in infos and f not in hole["walls"]]
+    cones = [f for f in beyond if f.surface["type"] == "cone"]
+    if cones:
+        deepest = min(cones, key=lambda f: f.z_min)
+        return "cone", round(2 * float(deepest.surface["half_angle"]), 4)
+    if any(_level(f, True) and f.z_min <= hole["z_bottom"] + max(tol, 1e-9) for f in beyond):
+        return "flat", None
+    return "other", None
+
+
 # --------------------------------------------------------------------------------------------
 # Body
 # --------------------------------------------------------------------------------------------
@@ -766,6 +787,7 @@ def classify(
     wall_of, round_walls = {}, set()
     for h in holes:
         h["prismatic"] = _prismatic(h, infos, wall_cos)
+        h["bottom"], h["tip_angle"] = hole_bottom(h, infos, float(tolerance))
         for w in h["faces"]:
             wall_of.setdefault(w, h["index"])
         if h["circular"] and h["kind"] in ("through", "blind"):

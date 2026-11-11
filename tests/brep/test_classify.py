@@ -122,6 +122,8 @@ def test_holes_and_hole_walls(plate):
     assert [h["index"] for h in cl.holes] == [0, 1, 2]
     assert [h["kind"] for h in cl.holes] == ["through", "through", "blind"]
     assert all(h["prismatic"] and h["circular"] for h in cl.holes)
+    assert [h["bottom"] for h in cl.holes] == ["through", "through", "flat"]
+    assert all(h["tip_angle"] is None for h in cl.holes)
     blind = cl.holes[2]
     floor = cl.face(next(f for f in blind["faces"] if cl.face(f).surface["type"] == "plane"))
     assert floor.role == "floor" and floor.hole == 2 and floor.z_max == pytest.approx(0.0)
@@ -298,3 +300,23 @@ def test_exact_extents(solids, boolean):
     rim = 0.01 * np.sqrt(1 - axis**2)
     assert np.allclose(cl.bbox_min, np.minimum(0, 0.02 * axis) - rim, atol=1e-12)
     assert np.allclose(cl.bbox_max, np.maximum(0, 0.02 * axis) + rim, atol=1e-12)
+
+
+def test_hole_bottom():
+    from types import SimpleNamespace as NS
+
+    def face(kind, z_min, nz_min=0.0, **surface):
+        return NS(surface={"type": kind, **surface}, z_min=z_min, nz_min=nz_min, nz_max=nz_min)
+
+    infos = {
+        1: face("cylinder", -5),
+        2: face("cone", -6, half_angle=59.0),
+        3: face("plane", -5, nz_min=1.0),
+        4: face("sphere", -6),
+    }
+    hole = {"kind": "blind", "walls": [1], "faces": [1, 2], "z_bottom": -6}
+    assert C.hole_bottom(hole, infos, 1e-6) == ("cone", 118.0)
+    assert C.hole_bottom({**hole, "faces": [1, 3], "z_bottom": -5}, infos, 1e-6) == ("flat", None)
+    assert C.hole_bottom({**hole, "faces": [1, 4]}, infos, 1e-6) == ("other", None)
+    assert C.hole_bottom({**hole, "kind": "through"}, infos, 1e-6) == ("through", None)
+    assert C.hole_bottom({**hole, "kind": "open"}, infos, 1e-6) == ("open", None)

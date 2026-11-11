@@ -77,8 +77,9 @@ def brep_info(
     holes: openings with index (for extract_edges(holes=[...])), kind (through | blind |
       open), circular, vertical, diameter, depth and z_top / z_bottom (to the deepest face
       inside: the floor), walls_bottom (where the walls across the opening end), size_xy,
-      walls, faces (everything inside) and prismatic (vertical walls + level floor: 2.5D,
-      for POCKET / DRILL). bosses: loops whose walls stand out of the face.
+      walls, faces (everything inside), prismatic (vertical walls + level floor: 2.5D,
+      for POCKET / DRILL) and bottom (through / cone with tip_angle (a drill point) / flat
+      / other). bosses: loops whose walls stand out of the face.
     counts (faces per surface type and role, edges per kind), closed (solid or sheet),
     bbox_min / bbox_max / size, placement (top_z, bottom_z, below_depth_start: Fabex only
     machines below Z 0 by default - the stock top), limits (min_concave_radius ->
@@ -90,6 +91,7 @@ def brep_info(
       finish (FLOWLINE on the curved faces not steeper than 80 degrees, ball and stepover
       chosen from the limits), cut_out (CUTOUT). Z values in the calls assume "place" ran.
       A starting point: check it with fit_check / flowline_preview and the computed paths.
+    automatic: the calls for a complete automatic plan instead (plan_cam, apply_plan).
 
     faces: report only these faces (roles still use the whole body). tolerance: how close a
     face must be to a plane / cylinder / ... to count as one. wall_angle: degrees from level

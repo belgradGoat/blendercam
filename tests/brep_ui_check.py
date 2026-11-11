@@ -158,6 +158,11 @@ try:
             state["drawn"].add(f"machine {state['variant']}")
         except Exception as e:
             state["errors"].append((f"machine {state['variant']}", repr(e)))
+        try:
+            autocam_ui.draw_autocam_panel(self.layout.column(), context.scene)
+            state["drawn"].add(f"autocam {state['variant']}")
+        except Exception as e:
+            state["errors"].append((f"autocam {state['variant']}", repr(e)))
 
     autocam_ui = importlib.import_module(FABEX + ".autocam.ui")
     machine_panel = importlib.import_module(FABEX + ".ui.panels.machine_panel")
@@ -194,10 +199,18 @@ def set_variant(name):
     elif name == "fanuc":
         fx.set_machine(preset="robodrill_d21mib5")
         o.autocam.coolant = "MIST"
+    elif name == "autocam":
+        bpy.context.scene.cam_autocam.part = dish
+        plan = fx.plan_cam("Dish")
+        roles = {u["role"] for u in plan["coverage"]["uncovered"]}
+        check("auto cam: a plan for the dish (the dish itself is 3D: left)",
+              [op["phase"] for op in plan["operations"]] == ["face", "rough", "walls"]
+              and ("curved" in roles or "fillet" in roles), plan["coverage"]["uncovered"])  # fmt: skip
 
 
 VARIANTS = ["exact", "fit ok", "fit stale", "fit misfit", "ocl off", "exact off", "no kernel"]
 VARIANTS += ["fanuc"]  # post processor FANUC: the machine box and the operation's settings
+VARIANTS += ["autocam"]  # the Auto CAM panel with a plan
 step = {"i": 0, "wait": 0}
 
 
@@ -231,6 +244,17 @@ def poll():
                 all("machine " + v in state["drawn"] for v in VARIANTS),
             )
             check("FANUC post selected", bpy.context.scene.cam_machine.post_processor == "FANUC")
+            check(
+                "Auto CAM panel drew in every state (no plan / a plan)",
+                all("autocam " + v in state["drawn"] for v in VARIANTS)
+                and hasattr(bpy.types, "FABEX_PT_CAM_AUTOCAM"),
+            )
+            check(
+                "Auto CAM: Plan and Apply available, Verify not yet",
+                bpy.ops.object.cam_autocam_plan.poll()
+                and bpy.ops.object.cam_autocam_apply.poll()
+                and not bpy.ops.object.cam_autocam_verify.poll(),
+            )
             check("no draw errors", not state["errors"], state["errors"])
             finish()
         name = VARIANTS[step["i"]]
@@ -244,7 +268,8 @@ def poll():
             return 0.2
         step["wait"] += 1
         done = all(
-            k in state["drawn"] for k in (name, "fit " + name, "flow " + name, "machine " + name)
+            k in state["drawn"]
+            for k in (name, "fit " + name, "flow " + name, "machine " + name, "autocam " + name)
         )
         if done or step["wait"] > 25:
             check(f"panel helper drew: {name}", name in state["drawn"])

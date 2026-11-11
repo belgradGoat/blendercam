@@ -327,5 +327,11 @@ def object_info(
         },
         "limits": limits,
         "suggestions": suggestions(ob, cl, top_z),
+        "automatic": {
+            "why": "Or let plan_cam choose the stock, tools, operations and cutting data for a "
+            "machining centre (2.5D, top side), then apply_plan() to make, compute, write and "
+            "verify the program. The suggestions above are separate operations to build by hand.",
+            "calls": [f"plan_cam({ob.name!r}, material='6061')", "apply_plan()"],
+        },
         "warnings": warnings,
     }

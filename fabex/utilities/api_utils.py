@@ -38,6 +38,8 @@ ERROR_CODES = {
     "TOO_LARGE": "The result would be too big (details has the estimate and the limit)",
     "TOOL_CONFLICT": "One tool number (T) is used for different cutters",
     "MACHINE_LIMIT": "Beyond what the machine profile allows (magazine, coolant, travel)",
+    "PLAN_INVALID": "The plan is not one plan_cam made (missing fields, geometry or version)",
+    "PLAN_STALE": "The part changed or moved since it was planned: plan again",
     "CAM_ERROR": "A Fabex error without a specific code",
     "INTERNAL_ERROR": "Unexpected error - details has the exception",
 }
