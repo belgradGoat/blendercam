@@ -32,6 +32,15 @@ def update_brep(self, context):
 
 
 class CAM_BREP_Properties(PropertyGroup):
+    exact_sampling: BoolProperty(
+        name="Exact B-rep Sampling",
+        description="For BRepKit B-rep objects, drop the cutter onto (and trace waterlines "
+        "around) the exact surfaces with BRepKit instead of OpenCAMLib on a mesh: no "
+        "tessellation error. End mills, ball and bull nose cutters; others use the mesh",
+        default=True,
+        update=update_brep,
+    )
+
     use_exact_mesh: BoolProperty(
         name="Exact B-rep Mesh",
         description="For BRepKit B-rep objects, give OpenCAMLib a mesh tessellated from the "

@@ -11,6 +11,7 @@ from ..constants import (
     OCL_SCALE,
 )
 from .async_utils import progress_async
+from ..brep import exact_cam
 from ..chunk_builder import CamPathChunk
 from .chunk_utils import sort_chunks
 from .logging_utils import log
@@ -66,6 +67,26 @@ async def oclGetWaterline(operation, chunks):
     """
 
     layers = oclWaterlineLayerHeights(operation)
+
+    # only BRepKit B-rep sources: waterlines on their exact surfaces (brep/exact_cam.py)
+    await progress_async("Exact B-rep Waterlines")
+    exact = exact_cam.waterline_loops(operation, layers)
+    if exact is not None:
+        last_pos = [0, 0, 0]
+        for count, (height, loops) in enumerate(zip(layers, exact)):
+            await progress_async("Waterline", int((100 * count) / len(layers)))
+            layer_chunks = []
+            for loop in loops:
+                inpoints = [(float(x), float(y), height) for x, y in loop]
+                inpoints.append(inpoints[0])
+                chunk = CamPathChunk(inpoints=inpoints)
+                chunk.closed = True
+                layer_chunks.append(chunk)
+            chunks.extend(await sort_chunks(layer_chunks, operation, last_pos=last_pos))
+            if len(chunks) > 0:
+                last_pos = chunks[-1].get_point(-1)
+        return
+
     oclSTL = get_oclSTL(operation)
     op_cutter_type = operation.cutter_type
     op_cutter_diameter = operation.cutter_diameter

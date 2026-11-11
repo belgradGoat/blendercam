@@ -57,6 +57,7 @@ class AddPresetCamOperation(AddPresetBase, Operator):
         "o.material.size",
         "o.material.radius_around_model",
         "o.material.origin",
+        "o.brep.exact_sampling",
         "o.brep.use_exact_mesh",
         "o.brep.mesh_tolerance",
         "o.brep.check_fit",

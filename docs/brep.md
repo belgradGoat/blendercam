@@ -6,11 +6,12 @@ NURBS surface with its trim curves, stored on the object (`obj["brepkit_data"]`)
 is only a display copy.
 
 Fabex machines a BRepKit object like any other mesh. When it can find BRepKit, it also
-uses the exact model for four things a mesh can't give:
+uses the exact model for five things a mesh can't give:
 
 | Feature | What it does | Where |
 |---|---|---|
-| **Exact meshes for OpenCAMLib** | OpenCAMLib samples a mesh made from the exact surfaces, to a tolerance you set, instead of the coarse display mesh | Operation > Optimisation > Exact |
+| **Exact sampling** | The cutter is dropped onto the exact surfaces, and waterlines are traced around them, by BRepKit itself: no tessellation error | Operation > Optimisation > Exact |
+| **Exact meshes for OpenCAMLib** | Where exact sampling doesn't apply, OpenCAMLib samples a mesh made from the exact surfaces, to a tolerance you set, instead of the coarse display mesh | Operation > Optimisation > Exact |
 | **Edges to curves** | Curves from the exact edges, face outlines and holes: sources for Profile, Pocket and Drill | Curve Tools panel, Fabex menu |
 | **Cutter fit check** | Does the cutter reach every fillet, hole and inside corner? | Cutter panel, Fabex menu |
 | **Flowline strategy** | Finishing passes that follow each face's surface (around a dome, along a fillet) | Strategy: *Flowline (B-rep)* |
@@ -36,10 +37,30 @@ top of the stock is at Z 0. A part modelled standing on the ground (Z 0) is abov
 stock, and its toolpath is empty. Move the part down so that its top is at Z 0, or raise
 Depth Start. B-rep operations warn when the part reaches above the depth start.
 
+## Exact sampling
+
+With **Optimisation > Exact** and OpenCAMLib on, operations on B-rep objects are sampled
+on the exact surfaces by BRepKit's drop-cutter (`brepkit.cam`) instead of OpenCAMLib:
+
+- **Exact B-rep Sampling**: on by default. For end mills, ball and bull nose cutters (other
+  cutters use the exact mesh below).
+- Every height is a real contact of the cutter with the surfaces, an edge or a corner: the
+  toolpath carries no tessellation error (on a 15 mm sphere a ball-nose finish lands within
+  a nanometre of the analytic surface, where the 0.01 mm mesh gives 11 micrometres).
+- **Skin** (stock to leave) is exact: the cutter grown by the skin all round touches the
+  surface where the cutter itself would touch the surface offset by the skin.
+- **Waterline** traces BRepKit's waterlines (constant-Z loops on the exact surfaces) when
+  every source of the operation is a B-rep object.
+- Other objects in the same operation (plain meshes, curves) are still sampled by
+  OpenCAMLib, and each point takes the higher of the two heights.
+
+The sampled body is cached per object, placement and cutter. Objects with modifiers, and
+any case BRepKit can't handle, fall back to the exact mesh with a warning.
+
 ## Exact meshes for OpenCAMLib
 
-With **Optimisation > Exact** and OpenCAMLib on, operations on B-rep objects sample a mesh
-made from the exact surfaces:
+Where exact sampling is off or doesn't apply, operations on B-rep objects give OpenCAMLib a
+mesh made from the exact surfaces:
 
 - **Exact B-rep Mesh**: on by default.
 - **Tolerance**: the largest distance between that mesh and the exact surfaces (0.01 mm by
@@ -115,3 +136,6 @@ The *Fin_Ball_3,0_Flowline* preset sets up a 3 mm ball-nose Flowline operation.
 - Fabex machines from above (3 axis): undercut faces get no passes.
 - On very large parts the exact mesh may not reach a very fine tolerance; the panel and the
   compute warnings show the deviation reached.
+- Exact sampling with a flat end mill is several times slower than with ball and bull nose
+  cutters (its rim's contact is searched around the rim); waterlines take a few seconds a
+  level on a filleted part.

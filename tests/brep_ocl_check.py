@@ -97,6 +97,7 @@ res = fx.create_operation(
         "distance_between_paths": 0.001,
         "optimisation.use_exact": True,
         "optimisation.use_opencamlib": True,
+        "brep.exact_sampling": False,  # this part checks the exact mesh; exact sampling below
         "brep.mesh_tolerance": TOL,
     },
 )
@@ -156,6 +157,7 @@ fx.create_operation(
         "stepdown": 0.002,
         "optimisation.use_exact": True,
         "optimisation.use_opencamlib": True,
+        "brep.exact_sampling": False,
         "brep.mesh_tolerance": TOL,
     },
 )
@@ -218,6 +220,93 @@ check("get_change_data sees B-rep edits", operation_utils.get_change_data(o) != 
 edited = fx.cam_tessellation("Ball", op="BallFinish")
 check("editing the B-rep invalidates the mesh cache", not edited["cached"])
 ob["brepkit_data"] = kernel.dumps_body(body)
+
+# --- exact sampling: BRepKit's drop-cutter and waterlines on the surfaces themselves --------
+fx.set_operation_props("BallFinish", {"brep.exact_sampling": True})
+r6 = fx.compute_operation("BallFinish", export=False)
+check(
+    "exact sampling: compute ok, reported as the exact surfaces",
+    r6["ok"] and r6["brep_meshes"] and r6["brep_meshes"][0]["mesh"] == "surfaces",
+    (r6["message"], r6["brep_meshes"]),
+)
+_, err_surf, n6 = analytic_error(path_points("BallFinish"))
+# (1e-8 m: the path is a Blender mesh, float32 vertices)
+check(
+    "exact sampling: path Z on the analytic sphere (no tessellation error)",
+    n6 > 200 and err_surf < 1e-8,
+    f"max error {err_surf:.1e} m over {n6} points (exact mesh {err_exact:.1e} m)",
+)
+SKIN = 0.0005
+fx.set_operation_props("BallFinish", {"skin": SKIN})
+r7 = fx.compute_operation("BallFinish", export=False)
+p7 = path_points("BallFinish")
+d7 = np.linalg.norm(p7[:, :2] - CENTER[:2], axis=1)
+rs = R + BALL_R + SKIN  # the tip rides on the sphere offset by the skin
+k7 = (d7 < 0.7 * rs) & (p7[:, 2] < SKIN + 1e-4)
+err_skin = np.abs(p7[k7, 2] - (CENTER[2] + np.sqrt(rs**2 - d7[k7] ** 2) - BALL_R)).max()
+check(
+    "exact sampling with skin: the ball on the offset sphere, exactly",
+    r7["ok"] and k7.sum() > 200 and err_skin < 1e-8,
+    f"max error {err_skin:.1e} m over {int(k7.sum())} points",
+)
+fx.set_operation_props("BallFinish", {"skin": 0.0, "brep.exact_sampling": False})
+
+fx.set_operation_props("BallWaterline", {"brep.exact_sampling": True})
+rw2 = fx.compute_operation("BallWaterline", export=False)
+pw2 = path_points("BallWaterline")
+h2 = pw2[:, 2] + BALL_R - CENTER[2]
+on2 = (h2 > 0.05 * rr) & (h2 < 0.95 * rr)
+err_w = np.abs(np.linalg.norm(pw2[on2, :2] - CENTER[:2], axis=1) - np.sqrt(rr**2 - h2[on2] ** 2))
+check(
+    "exact waterline: contours on the analytic circles",
+    rw2["ok"] and rw2["brep_meshes"][0]["mesh"] == "surfaces" and on2.sum() > 100
+    and err_w.max() < 1e-8,
+    f"max error {err_w.max():.1e} m over {int(on2.sum())} points",
+)
+fx.set_operation_props("BallWaterline", {"brep.exact_sampling": False})
+
+# a collection of the B-rep ball and a plain mesh block beside it: the ball sampled
+# exactly, the block by OpenCAMLib, each point the higher of the two
+mixed = bpy.data.collections.new("MixedSources")
+bpy.context.scene.collection.children.link(mixed)
+mixed.objects.link(ob)
+bpy.ops.mesh.primitive_cube_add(size=0.01, location=(CENTER[0] + 0.03, CENTER[1], -0.006))
+block = bpy.context.active_object
+block.name = "PlainBlock"
+for c in list(block.users_collection):
+    c.objects.unlink(block)
+mixed.objects.link(block)
+bpy.context.view_layer.update()
+fx.create_operation(
+    collection_name="MixedSources",
+    strategy="PARALLEL",
+    name="MixedFinish",
+    props={
+        "cutter_type": "BALLNOSE",
+        "cutter_diameter": 2 * BALL_R,
+        "distance_between_paths": 0.001,
+        "optimisation.use_exact": True,
+        "optimisation.use_opencamlib": True,
+    },
+)
+r8 = fx.compute_operation("MixedFinish", export=False)
+p8 = path_points("MixedFinish")
+# near the block (its top at -1 mm; flat runs keep only their ends) the tip rests on its
+# top and never rises above it (retracts to the safe height left out)
+near = (
+    (np.abs(p8[:, 0] - (CENTER[0] + 0.03)) < 0.005 + BALL_R)
+    & (np.abs(p8[:, 1] - CENTER[1]) < 0.005 + BALL_R)
+    & (p8[:, 2] < 0.005)
+)
+_, err_mixed, n8 = analytic_error(p8)
+check(
+    "mixed sources: B-rep exact, the mesh block by OpenCAMLib",
+    r8["ok"] and [e["object"] for e in r8["brep_meshes"]] == ["Ball"]
+    and r8["brep_meshes"][0]["mesh"] == "surfaces" and n8 > 100 and err_mixed < 1e-8
+    and near.sum() > 10 and np.abs(p8[near, 2] + 0.001).min() < 1e-8
+    and p8[near, 2].max() < -0.001 + 1e-8,
+    (r8["message"], r8["brep_meshes"], err_mixed, int(near.sum()), float(p8[near, 2].max())),
+)
 
 # --- errors and fallbacks --------------------------------------------------------------------
 import json

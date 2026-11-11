@@ -37,6 +37,7 @@ except ImportError:
 import mathutils
 
 
+from ..brep import exact_cam
 from ..brep.ocl_mesh import exact_triangles
 from ..constants import OCL_SCALE, _PREVIOUS_OCL_MESH
 
@@ -310,7 +311,7 @@ def add_triangles(oclSTL, triangles, skin):
         oclSTL.addTriangle(Triangle(Point(*a), Point(*b), Point(*c)))
 
 
-def get_oclSTL(operation):
+def get_oclSTL(operation, objects=None):
     """Get the oclSTL representation from the provided operation.
 
 
@@ -349,7 +350,7 @@ def get_oclSTL(operation):
 
     found_mesh = False
 
-    for collision_object in operation.objects:
+    for collision_object in operation.objects if objects is None else objects:
 
         activate(collision_object)
 
@@ -446,11 +447,76 @@ async def ocl_sample(operation, chunks, use_cached_mesh=False):
 
     global _PREVIOUS_OCL_MESH
 
+    # BRepKit B-rep sources: the cutter dropped on their exact surfaces (brep/exact_cam.py);
+    # OpenCAMLib samples only the other sources, and each point takes the higher height
+    if chunks:
+        xy = np.concatenate([np.asarray(ch.get_points_np(), dtype=float)[:, :2] for ch in chunks])
+        exact = exact_cam.drop_heights(operation, xy)
+        if exact is not None:
+            z, rest = exact
+            if rest:
+                # OpenCAMLib keeps only pointers: the mesh and cutter must outlive the run
+                rest_stl, rest_cutter = get_oclSTL(operation, rest), _ocl_cutter(operation)
+                bdc = ocl.BatchDropCutter()
+                bdc.setSTL(rest_stl)
+                bdc.setCutter(rest_cutter)
+                for x, y in xy:
+                    bdc.appendPoint(ocl.CLPoint(x * 1000, y * 1000, operation.min_z * 1000))
+                bdc.run()
+                z = np.maximum(z, np.array([p.z for p in bdc.getCLPoints()]) / OCL_SCALE)
+            await progress_async("Exact B-rep Sampling")
+            return [_Sample(v) for v in np.maximum(z, operation.min_z) * OCL_SCALE]
+
+    cutter = _ocl_cutter(operation)
+
+    bdc = ocl.BatchDropCutter()
+
+    if use_cached_mesh and _PREVIOUS_OCL_MESH is not None:
+
+        oclSTL = _PREVIOUS_OCL_MESH
+
+    else:
+
+        oclSTL = get_oclSTL(operation)
+
+        _PREVIOUS_OCL_MESH = oclSTL
+
+    bdc.setSTL(oclSTL)
+
+    bdc.setCutter(cutter)
+
+    op_minz = operation.min_z
+
+    for chunk in chunks:
+
+        for coord in chunk.get_points_np():
+
+            bdc.appendPoint(ocl.CLPoint(coord[0] * 1000, coord[1] * 1000, op_minz * 1000))
+
+    await progress_async("OpenCAMLib Sampling")
+
+    bdc.run()
+
+    cl_points = bdc.getCLPoints()
+
+    return cl_points
+
+
+class _Sample:
+    """An exactly sampled height, in OpenCAMLib's units: what callers read of a CLPoint."""
+
+    __slots__ = ("z",)
+
+    def __init__(self, z):
+        self.z = float(z)
+
+
+def _ocl_cutter(operation):
+    """The operation's cutter for OpenCAMLib, grown by the skin."""
+
     op_cutter_type = operation.cutter_type
 
     op_cutter_diameter = operation.cutter_diameter
-
-    op_minz = operation.min_z
 
     op_cutter_tip_angle = radians(operation.cutter_tip_angle) / 2
 
@@ -508,35 +574,7 @@ async def ocl_sample(operation, chunks, use_cached_mesh=False):
 
         quit()
 
-    bdc = ocl.BatchDropCutter()
-
-    if use_cached_mesh and _PREVIOUS_OCL_MESH is not None:
-
-        oclSTL = _PREVIOUS_OCL_MESH
-
-    else:
-
-        oclSTL = get_oclSTL(operation)
-
-        _PREVIOUS_OCL_MESH = oclSTL
-
-    bdc.setSTL(oclSTL)
-
-    bdc.setCutter(cutter)
-
-    for chunk in chunks:
-
-        for coord in chunk.get_points_np():
-
-            bdc.appendPoint(ocl.CLPoint(coord[0] * 1000, coord[1] * 1000, op_minz * 1000))
-
-    await progress_async("OpenCAMLib Sampling")
-
-    bdc.run()
-
-    cl_points = bdc.getCLPoints()
-
-    return cl_points
+    return cutter
 
 
 async def oclResampleChunks(operation, chunks_to_resample, use_cached_mesh):

@@ -6,18 +6,22 @@ Drawing helpers for B-rep settings, called from Fabex's panels (no classes regis
 import bpy
 
 from ..utilities.simple_utils import unit_value_to_string
-from . import bridge, fit, flow, ocl_mesh
+from . import bridge, exact_cam, fit, flow, ocl_mesh
 from .bridge import operation_brep_objects
 
 
 def draw_ocl_mesh_settings(layout, o) -> None:
-    """Exact-mesh settings for an operation whose sources include B-rep objects."""
+    """Exact sampling / exact-mesh settings for an operation whose sources include B-rep
+    objects, and what the last compute used for each."""
     if not operation_brep_objects(o):
         return
     col = layout.column(align=True)
     if not o.optimisation.use_opencamlib:
         col.label(text="B-rep: use OpenCAMLib to sample the exact surfaces", icon="INFO")
         return
+    col.prop(o.brep, "exact_sampling")
+    if o.brep.exact_sampling and o.cutter_type not in exact_cam.CUTTERS:
+        col.label(text=f"{o.cutter_type.title()} cutter: sampled on the mesh below", icon="INFO")
     col.prop(o.brep, "use_exact_mesh")
     if not o.brep.use_exact_mesh:
         return
@@ -33,6 +37,10 @@ def draw_ocl_mesh_settings(layout, o) -> None:
         if entry["object"] not in names:
             continue
         if entry.get("mesh") == "exact" and entry.get("tolerance") != o.brep.mesh_tolerance:
+            continue
+        if entry.get("mesh") == "surfaces":
+            col.label(text=f"{entry['object']}: exact surfaces ({entry.get('strategy')}, "
+                      f"{entry.get('seconds', 0):.2f} s)", icon="CHECKMARK")
             continue
         if entry.get("mesh") == "exact":
             dev = entry.get("max_deviation")

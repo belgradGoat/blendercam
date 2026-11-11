@@ -75,7 +75,7 @@ try:
         },
     )
     r = fx.compute_operation("Finish", export=False)
-    check("compute with the exact mesh", r["ok"] and r["brep_meshes"][0]["mesh"] == "exact", r)
+    check("compute samples the exact surfaces", r["ok"] and r["brep_meshes"][0]["mesh"] == "surfaces", r)
     o = bpy.context.scene.cam_operations[0]
     check("operation has B-rep sources", brep_ui.operation_brep_objects(o) == [ob])
 
@@ -177,6 +177,7 @@ real_find_kernel = bridge.find_kernel
 def set_variant(name):
     bridge.find_kernel = real_find_kernel
     o.optimisation.use_opencamlib = True
+    o.brep.exact_sampling = True
     o.brep.use_exact_mesh = True
     o3.brep.flow_faces = "1" if name in ("fit ok", "ocl off") else ""
     if name == "fit ok":
@@ -192,7 +193,10 @@ def set_variant(name):
         )
     elif name == "ocl off":
         o.optimisation.use_opencamlib = False
+    elif name == "sampling off":
+        o.brep.exact_sampling = False
     elif name == "exact off":
+        o.brep.exact_sampling = False
         o.brep.use_exact_mesh = False
     elif name == "no kernel":
         bridge.find_kernel = lambda refresh=False: None
@@ -208,7 +212,8 @@ def set_variant(name):
               and ("curved" in roles or "fillet" in roles), plan["coverage"]["uncovered"])  # fmt: skip
 
 
-VARIANTS = ["exact", "fit ok", "fit stale", "fit misfit", "ocl off", "exact off", "no kernel"]
+VARIANTS = ["exact", "sampling off", "fit ok", "fit stale", "fit misfit", "ocl off", "exact off"]
+VARIANTS += ["no kernel"]
 VARIANTS += ["fanuc"]  # post processor FANUC: the machine box and the operation's settings
 VARIANTS += ["autocam"]  # the Auto CAM panel with a plan
 step = {"i": 0, "wait": 0}

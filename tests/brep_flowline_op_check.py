@@ -109,6 +109,7 @@ res = fx.create_flowline_operation(
     props={
         "optimisation.use_exact": True,
         "optimisation.use_opencamlib": True,
+        "brep.exact_sampling": False,  # the G-code reference is for the exact mesh
         "brep.mesh_tolerance": TOL,
         "movement.stay_low": True,
         "movement.free_height": 0.05,
@@ -187,6 +188,19 @@ if REFERENCE.exists():
     check("G-code matches the reference", diff == 0, f"{diff} lines differ of {len(ref)}")
 else:
     check("G-code reference exists (FABEX_UPDATE_REFERENCE=1 writes it)", False, REFERENCE)
+
+# --- the same on the exact surfaces (BRepKit's drop-cutter): within the mesh tolerance -------
+V1, _ = path_points(o)
+fx.set_operation_props("Flow", {"brep.exact_sampling": True})
+r9 = fx.compute_operation("Flow", export=False)
+V9, _ = path_points(o)
+check(
+    "exact sampling: the flowline on the surfaces, within the mesh tolerance of the mesh's",
+    r9["ok"] and any(m.get("mesh") == "surfaces" for m in r9["brep_meshes"])
+    and V9.shape == V1.shape and np.abs(V9 - V1).max() < 2 * TOL,
+    (r9["brep_meshes"], V9.shape, V1.shape, V9.shape == V1.shape and float(np.abs(V9 - V1).max())),
+)
+fx.set_operation_props("Flow", {"brep.exact_sampling": False})
 
 # --- only the dome, from a face selection ------------------------------------------------------
 fx.set_operation_props("Flow", {"brep.flow_faces": str(faces["B.Sphere.7"])})
